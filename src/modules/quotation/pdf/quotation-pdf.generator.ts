@@ -335,8 +335,8 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     // Stamp on provider side
     const stampExists = fs.existsSync(STAMP_PATH);
     if (stampExists) {
-      const stW = 68;
-      doc.image(STAMP_PATH, sig2X + (sigW - stW) / 2, bankStartY - 5, {
+      const stW = 102;
+      doc.image(STAMP_PATH, sig2X + (sigW - stW) / 2, bankStartY - 20, {
         fit: [stW, stW],
       });
     }
