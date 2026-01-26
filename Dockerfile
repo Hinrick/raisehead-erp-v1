@@ -21,8 +21,8 @@ FROM base AS production
 ENV NODE_ENV=production
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
-COPY --from=build /app/node_modules/.prisma ./node_modules/.prisma
 COPY package.json pnpm-lock.yaml .npmrc ./
 COPY prisma ./prisma
+RUN pnpm db:generate
 EXPOSE 3000
 CMD ["node", "dist/server.js"]
