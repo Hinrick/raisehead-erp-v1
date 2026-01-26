@@ -1,5 +1,5 @@
 import PDFDocument from 'pdfkit';
-import type { Quotation, Client, QuotationItem } from '@prisma/client';
+import type { Quotation, Client, QuotationItem, PaymentTerm, QuotationNote } from '@prisma/client';
 import { config } from '../../../config/index.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -34,6 +34,8 @@ const C = {
 type QuotationWithRelations = Quotation & {
   client: Client;
   items: QuotationItem[];
+  paymentTerms: PaymentTerm[];
+  notes: QuotationNote[];
 };
 
 export async function generateQuotationPdf(quotation: QuotationWithRelations): Promise<Buffer> {
@@ -270,23 +272,46 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
       width: priceSectionW, align: 'right', lineBreak: false,
     });
 
-    // Terms box (left side)
-    if (quotation.notes) {
-      const noteLines = quotation.notes.split('\n').filter(l => l.trim());
-      const termsH = Math.max(58, 36 + noteLines.length * 16);
+    // Terms box (left side) — payment terms + notes
+    const ptLines = quotation.paymentTerms.map(pt => pt.content);
+    const noteLines = quotation.notes.map(n => n.content);
+    const allTermLines = [...ptLines, ...noteLines];
+
+    if (allTermLines.length > 0) {
+      // Header for payment terms section
+      const hasPT = ptLines.length > 0;
+      const hasNotes = noteLines.length > 0;
+      const headerCount = (hasPT ? 1 : 0) + (hasNotes ? 1 : 0);
+      const termsH = Math.max(58, 36 + headerCount * 18 + allTermLines.length * 16);
 
       doc.roundedRect(ml, y - 2, termsBoxW, termsH, 8).fill(C.termsBg);
 
-      doc.fontSize(9.5).font('TC-Bold').fillColor(C.indigo);
-      doc.text('備註 Terms', ml + 15, y + 10, { lineBreak: false });
+      let ny = y + 10;
 
-      let ny = y + 28;
-      doc.fontSize(8.5).font('TC').fillColor(C.indigo);
-      for (const line of noteLines) {
-        doc.text('•   ' + line.trim(), ml + 15, ny, {
-          width: termsBoxW - 30, lineBreak: false,
-        });
-        ny += 16;
+      if (hasPT) {
+        doc.fontSize(9.5).font('TC-Bold').fillColor(C.indigo);
+        doc.text('付款條件 Payment Terms', ml + 15, ny, { lineBreak: false });
+        ny += 18;
+        doc.fontSize(8.5).font('TC').fillColor(C.indigo);
+        for (const line of ptLines) {
+          doc.text('•   ' + line, ml + 15, ny, {
+            width: termsBoxW - 30, lineBreak: false,
+          });
+          ny += 16;
+        }
+      }
+
+      if (hasNotes) {
+        doc.fontSize(9.5).font('TC-Bold').fillColor(C.indigo);
+        doc.text('備註 Notes', ml + 15, ny, { lineBreak: false });
+        ny += 18;
+        doc.fontSize(8.5).font('TC').fillColor(C.indigo);
+        for (const line of noteLines) {
+          doc.text('•   ' + line, ml + 15, ny, {
+            width: termsBoxW - 30, lineBreak: false,
+          });
+          ny += 16;
+        }
       }
 
       y += Math.max(termsH, 65) + 10;

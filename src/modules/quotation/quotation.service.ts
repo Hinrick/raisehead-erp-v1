@@ -62,6 +62,12 @@ export async function findById(id: string) {
       items: {
         orderBy: { itemNumber: 'asc' },
       },
+      paymentTerms: {
+        orderBy: { sortOrder: 'asc' },
+      },
+      notes: {
+        orderBy: { sortOrder: 'asc' },
+      },
     },
   });
 
@@ -101,8 +107,18 @@ export async function create(input: CreateQuotationInput, userId: string) {
       originalTotal: new Decimal(input.originalTotal),
       discountedTotal: new Decimal(input.discountedTotal),
       taxIncluded: input.taxIncluded,
-      paymentTerms: input.paymentTerms,
-      notes: input.notes,
+      paymentTerms: {
+        create: (input.paymentTerms ?? []).map((content, i) => ({
+          content,
+          sortOrder: i + 1,
+        })),
+      },
+      notes: {
+        create: (input.notes ?? []).map((content, i) => ({
+          content,
+          sortOrder: i + 1,
+        })),
+      },
       items: {
         create: input.items.map((item) => ({
           itemNumber: item.itemNumber,
@@ -116,6 +132,12 @@ export async function create(input: CreateQuotationInput, userId: string) {
       client: true,
       items: {
         orderBy: { itemNumber: 'asc' },
+      },
+      paymentTerms: {
+        orderBy: { sortOrder: 'asc' },
+      },
+      notes: {
+        orderBy: { sortOrder: 'asc' },
       },
     },
   });
@@ -134,11 +156,19 @@ export async function update(id: string, input: UpdateQuotationInput) {
     }
   }
 
-  // If updating items, delete existing and create new
+  // Delete-and-recreate for nested relations when provided
+  const deleteOps = [];
   if (input.items) {
-    await prisma.quotationItem.deleteMany({
-      where: { quotationId: id },
-    });
+    deleteOps.push(prisma.quotationItem.deleteMany({ where: { quotationId: id } }));
+  }
+  if (input.paymentTerms) {
+    deleteOps.push(prisma.paymentTerm.deleteMany({ where: { quotationId: id } }));
+  }
+  if (input.notes) {
+    deleteOps.push(prisma.quotationNote.deleteMany({ where: { quotationId: id } }));
+  }
+  if (deleteOps.length > 0) {
+    await Promise.all(deleteOps);
   }
 
   return prisma.quotation.update({
@@ -151,8 +181,6 @@ export async function update(id: string, input: UpdateQuotationInput) {
       ...(input.originalTotal !== undefined && { originalTotal: new Decimal(input.originalTotal) }),
       ...(input.discountedTotal !== undefined && { discountedTotal: new Decimal(input.discountedTotal) }),
       ...(input.taxIncluded !== undefined && { taxIncluded: input.taxIncluded }),
-      ...(input.paymentTerms !== undefined && { paymentTerms: input.paymentTerms }),
-      ...(input.notes !== undefined && { notes: input.notes }),
       ...(input.status && { status: input.status }),
       ...(input.items && {
         items: {
@@ -164,11 +192,33 @@ export async function update(id: string, input: UpdateQuotationInput) {
           })),
         },
       }),
+      ...(input.paymentTerms && {
+        paymentTerms: {
+          create: input.paymentTerms.map((content, i) => ({
+            content,
+            sortOrder: i + 1,
+          })),
+        },
+      }),
+      ...(input.notes && {
+        notes: {
+          create: input.notes.map((content, i) => ({
+            content,
+            sortOrder: i + 1,
+          })),
+        },
+      }),
     },
     include: {
       client: true,
       items: {
         orderBy: { itemNumber: 'asc' },
+      },
+      paymentTerms: {
+        orderBy: { sortOrder: 'asc' },
+      },
+      notes: {
+        orderBy: { sortOrder: 'asc' },
       },
     },
   });

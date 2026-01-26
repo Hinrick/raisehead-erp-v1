@@ -28,6 +28,19 @@ app.get('/health', (_req, res) => {
 // API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(openApiDocument, {
   customSiteTitle: 'RaiseHead ERP API',
+  swaggerOptions: {
+    persistAuthorization: true,
+    responseInterceptor: (res: any) => {
+      if (res.url?.match(/\/api\/auth\/(login|register)$/) && res.ok) {
+        const body = typeof res.body === 'string' ? JSON.parse(res.body) : res.body;
+        const token = body?.data?.token;
+        if (token) {
+          (globalThis as any).ui.preauthorizeApiKey('bearerAuth', token);
+        }
+      }
+      return res;
+    },
+  },
 }));
 app.get('/openapi.json', (_req, res) => {
   res.json(openApiDocument);

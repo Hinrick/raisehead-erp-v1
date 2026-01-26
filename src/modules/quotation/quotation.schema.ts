@@ -16,8 +16,8 @@ export const createQuotationSchema = z.object({
   originalTotal: z.number().min(0),
   discountedTotal: z.number().min(0),
   taxIncluded: z.boolean().default(true),
-  paymentTerms: z.string().optional(),
-  notes: z.string().optional(),
+  paymentTerms: z.array(z.string().min(1)).optional(),
+  notes: z.array(z.string().min(1)).optional(),
 });
 
 export const updateQuotationSchema = createQuotationSchema.partial().extend({
