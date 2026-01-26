@@ -75,7 +75,8 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     const logoSize = 36;
     doc.roundedRect(ml, y, logoSize, logoSize, 8).fill(C.purple);
     doc.fontSize(22).font('TC-Bold').fillColor(C.white);
-    doc.text('抬', ml, y + 5, { width: logoSize, align: 'center', lineBreak: false });
+    const logoTextH = doc.heightOfString('抬', { width: logoSize });
+    doc.text('抬', ml, y + (logoSize - logoTextH) / 2, { width: logoSize, align: 'center', lineBreak: false });
 
     // Company name next to logo
     doc.fontSize(18).font('TC-Bold').fillColor(C.text);
@@ -332,13 +333,17 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     doc.moveTo(sigBaseX, bankStartY + 50).lineTo(sigBaseX + priceSectionW, bankStartY + 50)
        .lineWidth(0.5).strokeColor(C.borderDark).stroke();
 
-    // Stamp on provider side
+    // Stamp on provider side (rotated slightly for natural look)
     const stampExists = fs.existsSync(STAMP_PATH);
     if (stampExists) {
-      const stW = 102;
-      doc.image(STAMP_PATH, sig2X + (sigW - stW) / 2, bankStartY - 20, {
-        fit: [stW, stW],
-      });
+      const stW = 128;
+      const stCx = sig2X + sigW / 2;
+      const stCy = bankStartY + 10;
+      doc.save();
+      doc.translate(stCx, stCy);
+      doc.rotate(-8);
+      doc.image(STAMP_PATH, -stW / 2, -stW / 2, { fit: [stW, stW] });
+      doc.restore();
     }
 
     // Signature labels
