@@ -11,15 +11,23 @@ const FONT_REGULAR = path.join(ASSETS_DIR, 'fonts/NotoSansTC-Regular.otf');
 const FONT_BOLD = path.join(ASSETS_DIR, 'fonts/NotoSansTC-Bold.otf');
 const STAMP_PATH = path.join(ASSETS_DIR, 'company_stamp.png');
 
-// Light purple theme
+// Modern light purple theme
 const C = {
   purple: '#6D28D9',
-  purpleLine: '#8B5CF6',
-  purpleBg: '#EDE9FE',
+  purpleDark: '#4C1D95',
+  indigo: '#4338CA',
+  teal: '#0D9488',
+  green: '#059669',
+  pageBg: '#F3F4F6',
+  cardBg: '#F9FAFB',
+  termsBg: '#EEF2FF',
   purpleLight: '#F5F3FF',
-  border: '#C4B5FD',
+  border: '#E5E7EB',
+  borderDark: '#D1D5DB',
   text: '#1F2937',
   textLight: '#6B7280',
+  textFaint: '#9CA3AF',
+  watermark: '#E5E7EB',
   white: '#FFFFFF',
 };
 
@@ -34,7 +42,7 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
 
     const doc = new PDFDocument({
       size: 'A4',
-      margins: { top: 36, bottom: 36, left: 40, right: 40 },
+      margins: { top: 0, bottom: 0, left: 0, right: 0 },
       info: {
         Title: `報價單 - ${quotation.quotationNumber}`,
         Author: config.company.name,
@@ -49,224 +57,338 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     doc.registerFont('TC', FONT_REGULAR);
     doc.registerFont('TC-Bold', FONT_BOLD);
 
-    const pw = doc.page.width - 80;
-    const ml = 40;
-    const pageBottom = doc.page.height - 36;
-    let y = 36;
+    const fullW = doc.page.width;
+    const fullH = doc.page.height;
+    const ml = 50;
+    const pw = fullW - ml * 2;
+    let y = 0;
 
-    // ── HEADER ──────────────────────────────────────────
-    doc.fontSize(17).font('TC-Bold').fillColor(C.purple);
-    doc.text(config.company.name, ml, y, { width: pw, align: 'center', lineBreak: false });
-    y += 25;
+    // ── PAGE BACKGROUND ────────────────────────────
+    doc.rect(0, 0, fullW, fullH).fill(C.pageBg);
 
-    doc.fontSize(11).font('TC').fillColor(C.textLight);
-    doc.text('合作契約書 / Quotation', ml, y, { width: pw, align: 'center', lineBreak: false });
-    y += 18;
+    // ── GRADIENT BAR AT TOP ────────────────────────
+    drawGradientBar(doc, 0, 6, fullW);
+    y = 30;
 
-    doc.moveTo(ml, y).lineTo(ml + pw, y).lineWidth(1.5).strokeColor(C.purpleLine).stroke();
-    y += 12;
+    // ── COMPANY HEADER ─────────────────────────────
+    // Logo square
+    const logoSize = 36;
+    doc.roundedRect(ml, y, logoSize, logoSize, 8).fill(C.purple);
+    doc.fontSize(22).font('TC-Bold').fillColor(C.white);
+    doc.text('抬', ml, y + 5, { width: logoSize, align: 'center', lineBreak: false });
 
-    // ── INFO GRID (3 columns: Client / Project / Payment) ──
-    const colW = [Math.round(pw * 0.34), Math.round(pw * 0.30), 0];
-    colW[2] = pw - colW[0] - colW[1];
-    const colX = [ml, ml + colW[0], ml + colW[0] + colW[1]];
-    const gHdr = 16;
-    const gRow = 13;
-    const gPad = 4;
-    const lblW = 46;
-    const maxRows = 5;
-    const gContentH = maxRows * gRow;
+    // Company name next to logo
+    doc.fontSize(18).font('TC-Bold').fillColor(C.text);
+    doc.text(config.company.name, ml + logoSize + 12, y + 6, { lineBreak: false });
 
-    // Header row
-    for (let i = 0; i < 3; i++) {
-      doc.rect(colX[i], y, colW[i], gHdr).lineWidth(0.5).fillAndStroke(C.purpleBg, C.border);
+    // "QUOTATION" watermark on the right
+    doc.fontSize(36).font('TC-Bold').fillColor(C.watermark);
+    doc.text('QUOTATION', ml + pw - 270, y - 6, {
+      width: 270, align: 'right', lineBreak: false,
+    });
+
+    y += logoSize + 8;
+
+    // Company details
+    doc.fontSize(8.5).font('TC').fillColor(C.textLight);
+    doc.text(`統一編號：${config.company.taxId}`, ml, y, { lineBreak: false });
+
+    // Quotation number + date (right side)
+    const riX = ml + pw - 170;
+    doc.fontSize(8.5).font('TC').fillColor(C.textLight);
+    doc.text('報價單號', riX, y, { lineBreak: false });
+    doc.fontSize(11).font('TC-Bold').fillColor(C.text);
+    doc.text(quotation.quotationNumber, riX + 58, y - 1, { lineBreak: false });
+
+    y += 14;
+    if (config.company.email) {
+      doc.fontSize(8.5).font('TC').fillColor(C.textLight);
+      doc.text(`電子郵件：${config.company.email}`, ml, y, { lineBreak: false });
     }
-    doc.fontSize(8).font('TC-Bold').fillColor(C.purple);
-    doc.text('甲方 Client', colX[0] + gPad, y + 3.5, { lineBreak: false });
-    doc.text('專案 Project', colX[1] + gPad, y + 3.5, { lineBreak: false });
-    doc.text('匯款資訊 Payment', colX[2] + gPad, y + 3.5, { lineBreak: false });
-    y += gHdr;
+    doc.fontSize(8.5).font('TC').fillColor(C.textLight);
+    doc.text('報價日期', riX, y, { lineBreak: false });
+    doc.fontSize(11).font('TC-Bold').fillColor(C.text);
+    doc.text(formatDate(quotation.quotationDate), riX + 58, y - 1, { lineBreak: false });
 
-    // Content cells
-    for (let i = 0; i < 3; i++) {
-      doc.rect(colX[i], y, colW[i], gContentH).lineWidth(0.5).fillAndStroke(C.white, C.border);
+    y += 14;
+    if (config.company.address) {
+      doc.fontSize(8.5).font('TC').fillColor(C.textLight);
+      doc.text(config.company.address, ml, y, { lineBreak: false });
     }
 
-    const gridInfo: [string, string][][] = [
-      [
-        ['公司名稱', quotation.client.companyName],
-        ['統一編號', quotation.client.taxId || '-'],
-        ['聯絡人', quotation.client.contactName],
-        ['電子郵件', quotation.client.email || '-'],
-        ['電話', quotation.client.phone || '-'],
-      ],
-      [
-        ['專案名稱', quotation.projectName],
-        ['報價單號', quotation.quotationNumber],
-        ['報價日期', formatDate(quotation.quotationDate)],
-      ],
-      [
-        ['銀行', config.company.bank],
-        ['帳號', `(${config.company.bankCode})${config.company.bankAccount}`],
-        ['戶名', config.company.name],
-        ['統一編號', config.company.taxId],
-      ],
+    y += 20;
+
+    // ── DIVIDER ────────────────────────────────────
+    doc.moveTo(ml, y).lineTo(ml + pw, y).lineWidth(0.5).strokeColor(C.borderDark).stroke();
+    y += 20;
+
+    // ── CLIENT INFO + PROJECT DETAILS (2 columns) ──
+    const halfW = pw * 0.48;
+    const rightX = ml + pw - halfW;
+
+    // Section headers
+    doc.fontSize(9).font('TC-Bold').fillColor(C.indigo);
+    doc.text('客戶資料 CLIENT INFO', ml, y, { lineBreak: false });
+    doc.text('專案內容 PROJECT DETAILS', rightX, y, { lineBreak: false });
+    y += 20;
+
+    // Client company name
+    const clientStartY = y;
+    doc.fontSize(14).font('TC-Bold').fillColor(C.text);
+    doc.text(quotation.client.companyName, ml, y, { lineBreak: false });
+    y += 24;
+
+    // Client details
+    const clblW = 55;
+    const clientFields: [string, string][] = [
+      ['統一編號', quotation.client.taxId || '-'],
+      ['聯絡窗口', quotation.client.contactName],
+      ['電子郵件', quotation.client.email || '-'],
+      ['聯絡電話', quotation.client.phone || '-'],
     ];
-
-    for (let col = 0; col < 3; col++) {
-      let gy = y + 2;
-      for (const [label, value] of gridInfo[col]) {
-        doc.fontSize(7).font('TC-Bold').fillColor(C.textLight);
-        doc.text(label, colX[col] + gPad, gy, { lineBreak: false });
-        doc.fontSize(7.5).font('TC').fillColor(C.text);
-        doc.text(value, colX[col] + gPad + lblW, gy, {
-          width: colW[col] - gPad * 2 - lblW,
-          lineBreak: false,
-        });
-        gy += gRow;
-      }
+    for (const [label, value] of clientFields) {
+      doc.fontSize(8.5).font('TC').fillColor(C.textLight);
+      doc.text(label, ml, y, { lineBreak: false });
+      doc.fontSize(9).font('TC').fillColor(C.text);
+      doc.text(value, ml + clblW, y, { lineBreak: false });
+      y += 16;
     }
-    y += gContentH + 12;
 
-    // ── ITEMS TABLE ───────────────────────────────────
-    const numCol = 28;
-    const amtCol = 85;
-    const descCol = pw - numCol - amtCol;
-    const thH = 18;
+    // Project card (right column, aligned with client start)
+    const cardH = 65;
+    doc.roundedRect(rightX, clientStartY, halfW, cardH, 6).fill(C.cardBg);
+    doc.fontSize(8.5).font('TC').fillColor(C.textLight);
+    doc.text('專案名稱', rightX + 15, clientStartY + 12, { lineBreak: false });
+    doc.fontSize(14).font('TC-Bold').fillColor(C.text);
+    doc.text(quotation.projectName, rightX + 15, clientStartY + 30, {
+      width: halfW - 30, lineBreak: false,
+    });
 
-    // Table header
-    drawTableHeader(doc, ml, y, pw, thH, numCol, descCol, amtCol);
-    y += thH;
+    y += 10;
 
-    // Table rows
-    const items = quotation.items;
-    for (let i = 0; i < items.length; i++) {
-      const item = items[i];
+    // ── DIVIDER ────────────────────────────────────
+    doc.moveTo(ml, y).lineTo(ml + pw, y).lineWidth(0.5).strokeColor(C.borderDark).stroke();
+    y += 20;
+
+    // ── ITEMS TABLE ────────────────────────────────
+    const numW = 40;
+    const amtW = 80;
+    const descW = pw - numW - amtW;
+
+    // Header
+    doc.fontSize(8.5).font('TC-Bold').fillColor(C.textLight);
+    doc.text('#', ml + 5, y, { width: numW - 10, lineBreak: false });
+    doc.text('項目內容 (DESCRIPTION)', ml + numW, y, { lineBreak: false });
+    doc.text('金額 (NT$)', ml + numW + descW, y, {
+      width: amtW, align: 'right', lineBreak: false,
+    });
+    y += 14;
+    doc.moveTo(ml, y).lineTo(ml + pw, y).lineWidth(0.5).strokeColor(C.borderDark).stroke();
+    y += 5;
+
+    // Rows
+    for (let i = 0; i < quotation.items.length; i++) {
+      const item = quotation.items[i];
 
       // Measure row height
-      doc.fontSize(8.5).font('TC-Bold');
-      const descH = doc.heightOfString(item.description, { width: descCol - 12 });
+      doc.fontSize(10).font('TC-Bold');
+      const descH = doc.heightOfString(item.description, { width: descW - 10 });
       let detH = 0;
       if (item.details) {
-        doc.fontSize(7.5).font('TC');
-        detH = doc.heightOfString(item.details, { width: descCol - 12 }) + 2;
+        doc.fontSize(8.5).font('TC');
+        detH = doc.heightOfString(item.details, { width: descW - 10 }) + 3;
       }
-      const rh = Math.max(20, descH + detH + 8);
+      const rowH = Math.max(38, descH + detH + 18);
 
-      // Page break if needed (reserve space for pricing/terms/stamp)
-      if (y + rh > pageBottom - 130) {
+      // Page break check
+      if (y + rowH > fullH - 220) {
         doc.addPage();
-        y = 36;
-        drawTableHeader(doc, ml, y, pw, thH, numCol, descCol, amtCol);
-        y += thH;
+        doc.rect(0, 0, fullW, fullH).fill(C.pageBg);
+        y = 30;
       }
 
-      // Row background (alternating)
-      const rowBg = i % 2 === 1 ? C.purpleLight : C.white;
-      doc.rect(ml, y, pw, rh).lineWidth(0.5).fillAndStroke(rowBg, C.border);
+      // Alternating row bg
+      if (i % 2 === 1) {
+        doc.roundedRect(ml - 8, y, pw + 16, rowH, 4).fill(C.purpleLight);
+      }
 
-      // Column dividers
-      doc.moveTo(ml + numCol, y).lineTo(ml + numCol, y + rh)
-         .lineWidth(0.5).strokeColor(C.border).stroke();
-      doc.moveTo(ml + numCol + descCol, y).lineTo(ml + numCol + descCol, y + rh)
-         .lineWidth(0.5).strokeColor(C.border).stroke();
-
-      // Item number
-      doc.fontSize(8.5).font('TC').fillColor(C.text);
-      doc.text(String(item.itemNumber), ml + 2, y + 4, {
-        width: numCol - 4, align: 'center', lineBreak: false,
+      // Number (zero-padded, faint)
+      doc.fontSize(11).font('TC').fillColor(C.textFaint);
+      doc.text(String(item.itemNumber).padStart(2, '0'), ml + 5, y + 10, {
+        width: numW - 10, lineBreak: false,
       });
 
-      // Description (bold, wraps)
-      doc.fontSize(8.5).font('TC-Bold').fillColor(C.text);
-      doc.text(item.description, ml + numCol + 5, y + 4, { width: descCol - 12 });
+      // Description
+      doc.fontSize(10).font('TC-Bold').fillColor(C.text);
+      doc.text(item.description, ml + numW, y + 8, { width: descW - 10 });
 
-      // Details (smaller, gray)
+      // Details
       if (item.details) {
-        const detY = y + 4 + descH;
-        doc.fontSize(7.5).font('TC').fillColor(C.textLight);
-        doc.text(item.details, ml + numCol + 5, detY + 1, { width: descCol - 12 });
+        const detY = y + 8 + descH + 2;
+        doc.fontSize(8.5).font('TC').fillColor(C.textLight);
+        doc.text(item.details, ml + numW, detY, { width: descW - 10 });
       }
 
       // Amount
-      doc.fontSize(8.5).font('TC').fillColor(C.text);
-      doc.text(formatCurrency(Number(item.amount)), ml + numCol + descCol + 2, y + 4, {
-        width: amtCol - 6, align: 'right', lineBreak: false,
+      doc.fontSize(10).font('TC').fillColor(C.text);
+      doc.text(formatCurrency(Number(item.amount)), ml + numW + descW, y + 10, {
+        width: amtW, align: 'right', lineBreak: false,
       });
 
-      y += rh;
+      y += rowH;
+
+      // Divider between items
+      if (i < quotation.items.length - 1) {
+        doc.moveTo(ml, y).lineTo(ml + pw, y).lineWidth(0.3).strokeColor(C.border).stroke();
+      }
+      y += 4;
     }
 
-    y += 8;
+    y += 18;
 
-    // ── PRICING SUMMARY ─────────────────────────────
-    const priceX = ml + pw - 240;
+    // ── TERMS + PRICING (side by side) ─────────────
+    const termsBoxW = pw * 0.44;
+    const priceSectionX = ml + pw * 0.50;
+    const priceSectionW = pw * 0.50;
 
-    doc.fontSize(9).font('TC').fillColor(C.text);
-    doc.text('原價總計 (未稅):', priceX, y, { lineBreak: false });
-    doc.text(formatCurrency(Number(quotation.originalTotal)), priceX + 140, y, {
-      width: 95, align: 'right', lineBreak: false,
+    // Pricing (right side)
+    doc.fontSize(9.5).font('TC').fillColor(C.textLight);
+    doc.text('原價總計 (未稅)', priceSectionX, y + 2, { lineBreak: false });
+    doc.fontSize(10).font('TC').fillColor(C.text);
+    doc.text(formatCurrency(Number(quotation.originalTotal)), priceSectionX + priceSectionW - 100, y + 1, {
+      width: 100, align: 'right', lineBreak: false,
     });
-    y += 16;
 
+    const priceY1 = y + 24;
     const taxLabel = quotation.taxIncluded ? '(含稅)' : '(未稅)';
-    doc.fontSize(10).font('TC-Bold').fillColor(C.purple);
-    doc.text(`專案優惠價 ${taxLabel}:`, priceX, y, { lineBreak: false });
-    doc.text(formatCurrency(Number(quotation.discountedTotal)), priceX + 140, y, {
-      width: 95, align: 'right', lineBreak: false,
+    doc.fontSize(9.5).font('TC-Bold').fillColor(C.green);
+    doc.text(`專案優惠價 ${taxLabel}`, priceSectionX, priceY1, { lineBreak: false });
+
+    doc.fontSize(24).font('TC-Bold').fillColor(C.text);
+    doc.text(formatCurrency(Number(quotation.discountedTotal)), priceSectionX, priceY1 + 18, {
+      width: priceSectionW, align: 'right', lineBreak: false,
     });
+
+    // Terms box (left side)
+    if (quotation.notes) {
+      const noteLines = quotation.notes.split('\n').filter(l => l.trim());
+      const termsH = Math.max(58, 36 + noteLines.length * 16);
+
+      doc.roundedRect(ml, y - 2, termsBoxW, termsH, 8).fill(C.termsBg);
+
+      doc.fontSize(9.5).font('TC-Bold').fillColor(C.indigo);
+      doc.text('備註 Terms', ml + 15, y + 10, { lineBreak: false });
+
+      let ny = y + 28;
+      doc.fontSize(8.5).font('TC').fillColor(C.indigo);
+      for (const line of noteLines) {
+        doc.text('•   ' + line.trim(), ml + 15, ny, {
+          width: termsBoxW - 30, lineBreak: false,
+        });
+        ny += 16;
+      }
+
+      y += Math.max(termsH, 65) + 10;
+    } else {
+      y += 65;
+    }
+
+    y += 10;
+
+    // ── BANK DETAILS + SIGNATURES ──────────────────
+    doc.fontSize(11).font('TC-Bold').fillColor(C.text);
+    doc.text('匯款資訊 Bank Details', ml, y, { lineBreak: false });
     y += 20;
 
-    // ── TERMS ────────────────────────────────────────
-    if (quotation.notes) {
-      doc.moveTo(ml, y).lineTo(ml + pw, y)
-         .lineWidth(0.5).strokeColor(C.border).stroke();
-      y += 8;
+    // Parse bank info
+    const bankMatch = config.company.bank.match(/^(.+?)[\(（](.+?)[\)）]$/);
+    const bankName = bankMatch ? bankMatch[1] : config.company.bank;
+    const bankBranch = bankMatch ? bankMatch[2] : '';
 
-      doc.fontSize(8.5).font('TC-Bold').fillColor(C.purple);
-      doc.text('備註 / Terms & Conditions', ml, y, { lineBreak: false });
-      y += 14;
-
-      doc.fontSize(7.5).font('TC').fillColor(C.textLight);
-      const notesH = doc.heightOfString(quotation.notes, { width: pw });
-      doc.text(quotation.notes, ml, y, { width: pw });
-      y += notesH + 5;
+    // Bank info (left)
+    const bLblW = 55;
+    const bankStartY = y;
+    const bankFields: [string, string][] = [
+      ['銀行代碼', `${bankName} (${config.company.bankCode})`],
+      ['分行', bankBranch],
+      ['戶名', config.company.name],
+      ['帳號', config.company.bankAccount],
+    ];
+    for (const [label, value] of bankFields) {
+      doc.fontSize(8.5).font('TC').fillColor(C.textLight);
+      doc.text(label, ml, y, { lineBreak: false });
+      doc.fontSize(9).font('TC').fillColor(C.text);
+      doc.text(value, ml + bLblW, y, { lineBreak: false });
+      y += 16;
     }
 
-    // ── STAMP & SIGNATURE ────────────────────────────
-    const stampExists = fs.existsSync(STAMP_PATH);
-    const stampW = 95;
-    const stampH = 88;
-    const stampY = Math.max(y + 15, pageBottom - stampH - 25);
+    // Signature areas (right side)
+    const sigBaseX = priceSectionX;
+    const sigW = (priceSectionW - 30) / 2;
+    const sig1X = sigBaseX;
+    const sig2X = sigBaseX + sigW + 30;
 
+    // Divider above signatures
+    doc.moveTo(sigBaseX, bankStartY + 50).lineTo(sigBaseX + priceSectionW, bankStartY + 50)
+       .lineWidth(0.5).strokeColor(C.borderDark).stroke();
+
+    // Stamp on provider side
+    const stampExists = fs.existsSync(STAMP_PATH);
     if (stampExists) {
-      doc.image(STAMP_PATH, ml + pw - stampW - 5, stampY, {
-        fit: [stampW, stampH],
+      const stW = 68;
+      doc.image(STAMP_PATH, sig2X + (sigW - stW) / 2, bankStartY - 5, {
+        fit: [stW, stW],
       });
     }
 
-    doc.fontSize(9).font('TC').fillColor(C.text);
-    doc.text('甲方簽章：', ml, stampY + stampH - 22, { lineBreak: false });
-    doc.moveTo(ml + 52, stampY + stampH - 10)
-       .lineTo(ml + 170, stampY + stampH - 10)
-       .lineWidth(0.5).strokeColor(C.textLight).stroke();
+    // Signature labels
+    doc.fontSize(8).font('TC').fillColor(C.textLight);
+    doc.text('甲方簽章 Client', sig1X, bankStartY + 56, {
+      width: sigW, align: 'center', lineBreak: false,
+    });
+    doc.text('Signature', sig1X, bankStartY + 68, {
+      width: sigW, align: 'center', lineBreak: false,
+    });
+    doc.text('乙方簽章 Provider', sig2X, bankStartY + 56, {
+      width: sigW, align: 'center', lineBreak: false,
+    });
+    doc.text('Signature', sig2X, bankStartY + 68, {
+      width: sigW, align: 'center', lineBreak: false,
+    });
+
+    y = Math.max(y, bankStartY + 85);
+
+    // ── FOOTER ─────────────────────────────────────
+    y += 10;
+    doc.moveTo(ml, y).lineTo(ml + pw, y).lineWidth(0.5).strokeColor(C.border).stroke();
+
+    doc.fontSize(8.5).font('TC').fillColor(C.textLight);
+    doc.text('感謝您的合作與信任！ Thank you for your business.', ml, y + 12, {
+      width: pw, align: 'center', lineBreak: false,
+    });
 
     doc.end();
   });
 }
 
-function drawTableHeader(
-  doc: PDFKit.PDFDocument,
-  ml: number, y: number, pw: number, thH: number,
-  numCol: number, descCol: number, amtCol: number,
-) {
-  doc.rect(ml, y, pw, thH).lineWidth(0.5).fillAndStroke(C.purpleBg, C.border);
-  doc.fontSize(8).font('TC-Bold').fillColor(C.purple);
-  doc.text('#', ml + 2, y + 5, { width: numCol - 4, align: 'center', lineBreak: false });
-  doc.text('內容描述', ml + numCol + 5, y + 5, { lineBreak: false });
-  doc.text('金額 (NT$)', ml + numCol + descCol + 2, y + 5, {
-    width: amtCol - 6, align: 'right', lineBreak: false,
-  });
+function drawGradientBar(doc: PDFKit.PDFDocument, y: number, h: number, w: number) {
+  const steps = 60;
+  const sw = w / steps;
+  const stops = [
+    [124, 58, 237],
+    [99, 102, 241],
+    [59, 130, 246],
+    [6, 182, 212],
+  ];
+  for (let i = 0; i < steps; i++) {
+    const t = i / (steps - 1);
+    const si = Math.min(Math.floor(t * (stops.length - 1)), stops.length - 2);
+    const lt = t * (stops.length - 1) - si;
+    const r = Math.round(stops[si][0] + (stops[si + 1][0] - stops[si][0]) * lt);
+    const g = Math.round(stops[si][1] + (stops[si + 1][1] - stops[si][1]) * lt);
+    const b = Math.round(stops[si][2] + (stops[si + 1][2] - stops[si][2]) * lt);
+    doc.rect(i * sw, y, sw + 0.5, h).fill(`rgb(${r},${g},${b})`);
+  }
 }
 
 function formatDate(date: Date): string {
