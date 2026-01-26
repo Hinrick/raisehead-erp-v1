@@ -93,8 +93,7 @@ export const openApiDocument = {
     },
   },
   servers: [
-    { url: 'http://localhost:3000', description: 'Local Development' },
-    { url: 'http://68.183.164.220:3000', description: 'Production' },
+    { url: '/', description: 'Current Server' },
   ],
   components: {
     securitySchemes: {
