@@ -3,11 +3,25 @@ import type { Quotation, Client, QuotationItem } from '@prisma/client';
 import { config } from '../../../config/index.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import fs from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const FONT_DIR = path.resolve(__dirname, '../../../../assets/fonts');
-const FONT_REGULAR = path.join(FONT_DIR, 'NotoSansTC-Regular.otf');
-const FONT_BOLD = path.join(FONT_DIR, 'NotoSansTC-Bold.otf');
+const ASSETS_DIR = path.resolve(__dirname, '../../../../assets');
+const FONT_REGULAR = path.join(ASSETS_DIR, 'fonts/NotoSansTC-Regular.otf');
+const FONT_BOLD = path.join(ASSETS_DIR, 'fonts/NotoSansTC-Bold.otf');
+const STAMP_PATH = path.join(ASSETS_DIR, 'company_stamp.png');
+
+// Light purple theme
+const C = {
+  purple: '#6D28D9',
+  purpleLine: '#8B5CF6',
+  purpleBg: '#EDE9FE',
+  purpleLight: '#F5F3FF',
+  border: '#C4B5FD',
+  text: '#1F2937',
+  textLight: '#6B7280',
+  white: '#FFFFFF',
+};
 
 type QuotationWithRelations = Quotation & {
   client: Client;
@@ -20,7 +34,7 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
 
     const doc = new PDFDocument({
       size: 'A4',
-      margins: { top: 50, bottom: 50, left: 50, right: 50 },
+      margins: { top: 36, bottom: 36, left: 40, right: 40 },
       info: {
         Title: `報價單 - ${quotation.quotationNumber}`,
         Author: config.company.name,
@@ -32,284 +46,227 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    // Register CJK fonts for Chinese support
-    doc.registerFont('NotoSansTC', FONT_REGULAR);
-    doc.registerFont('NotoSansTC-Bold', FONT_BOLD);
+    doc.registerFont('TC', FONT_REGULAR);
+    doc.registerFont('TC-Bold', FONT_BOLD);
 
-    const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
+    const pw = doc.page.width - 80;
+    const ml = 40;
+    const pageBottom = doc.page.height - 36;
+    let y = 36;
 
-    // Header
-    drawHeader(doc, pageWidth);
+    // ── HEADER ──────────────────────────────────────────
+    doc.fontSize(17).font('TC-Bold').fillColor(C.purple);
+    doc.text(config.company.name, ml, y, { width: pw, align: 'center', lineBreak: false });
+    y += 25;
 
-    // Client Info (甲方)
-    drawClientSection(doc, quotation.client, pageWidth);
+    doc.fontSize(11).font('TC').fillColor(C.textLight);
+    doc.text('合作契約書 / Quotation', ml, y, { width: pw, align: 'center', lineBreak: false });
+    y += 18;
 
-    // Provider Info (乙方)
-    drawProviderSection(doc, quotation, pageWidth);
+    doc.moveTo(ml, y).lineTo(ml + pw, y).lineWidth(1.5).strokeColor(C.purpleLine).stroke();
+    y += 12;
 
-    // Items Table
-    drawItemsTable(doc, quotation.items, pageWidth);
+    // ── INFO GRID (3 columns: Client / Project / Payment) ──
+    const colW = [Math.round(pw * 0.34), Math.round(pw * 0.30), 0];
+    colW[2] = pw - colW[0] - colW[1];
+    const colX = [ml, ml + colW[0], ml + colW[0] + colW[1]];
+    const gHdr = 16;
+    const gRow = 13;
+    const gPad = 4;
+    const lblW = 46;
+    const maxRows = 5;
+    const gContentH = maxRows * gRow;
 
-    // Pricing Summary
-    drawPricingSummary(doc, quotation, pageWidth);
-
-    // Payment Info
-    drawPaymentInfo(doc, pageWidth);
-
-    // Terms (if any)
-    if (quotation.notes) {
-      drawTerms(doc, quotation.notes, pageWidth);
+    // Header row
+    for (let i = 0; i < 3; i++) {
+      doc.rect(colX[i], y, colW[i], gHdr).lineWidth(0.5).fillAndStroke(C.purpleBg, C.border);
     }
+    doc.fontSize(8).font('TC-Bold').fillColor(C.purple);
+    doc.text('甲方 Client', colX[0] + gPad, y + 3.5, { lineBreak: false });
+    doc.text('專案 Project', colX[1] + gPad, y + 3.5, { lineBreak: false });
+    doc.text('匯款資訊 Payment', colX[2] + gPad, y + 3.5, { lineBreak: false });
+    y += gHdr;
+
+    // Content cells
+    for (let i = 0; i < 3; i++) {
+      doc.rect(colX[i], y, colW[i], gContentH).lineWidth(0.5).fillAndStroke(C.white, C.border);
+    }
+
+    const gridInfo: [string, string][][] = [
+      [
+        ['公司名稱', quotation.client.companyName],
+        ['統一編號', quotation.client.taxId || '-'],
+        ['聯絡人', quotation.client.contactName],
+        ['電子郵件', quotation.client.email || '-'],
+        ['電話', quotation.client.phone || '-'],
+      ],
+      [
+        ['專案名稱', quotation.projectName],
+        ['報價單號', quotation.quotationNumber],
+        ['報價日期', formatDate(quotation.quotationDate)],
+      ],
+      [
+        ['銀行', config.company.bank],
+        ['帳號', `(${config.company.bankCode})${config.company.bankAccount}`],
+        ['戶名', config.company.name],
+        ['統一編號', config.company.taxId],
+      ],
+    ];
+
+    for (let col = 0; col < 3; col++) {
+      let gy = y + 2;
+      for (const [label, value] of gridInfo[col]) {
+        doc.fontSize(7).font('TC-Bold').fillColor(C.textLight);
+        doc.text(label, colX[col] + gPad, gy, { lineBreak: false });
+        doc.fontSize(7.5).font('TC').fillColor(C.text);
+        doc.text(value, colX[col] + gPad + lblW, gy, {
+          width: colW[col] - gPad * 2 - lblW,
+          lineBreak: false,
+        });
+        gy += gRow;
+      }
+    }
+    y += gContentH + 12;
+
+    // ── ITEMS TABLE ───────────────────────────────────
+    const numCol = 28;
+    const amtCol = 85;
+    const descCol = pw - numCol - amtCol;
+    const thH = 18;
+
+    // Table header
+    drawTableHeader(doc, ml, y, pw, thH, numCol, descCol, amtCol);
+    y += thH;
+
+    // Table rows
+    const items = quotation.items;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+
+      // Measure row height
+      doc.fontSize(8.5).font('TC-Bold');
+      const descH = doc.heightOfString(item.description, { width: descCol - 12 });
+      let detH = 0;
+      if (item.details) {
+        doc.fontSize(7.5).font('TC');
+        detH = doc.heightOfString(item.details, { width: descCol - 12 }) + 2;
+      }
+      const rh = Math.max(20, descH + detH + 8);
+
+      // Page break if needed (reserve space for pricing/terms/stamp)
+      if (y + rh > pageBottom - 130) {
+        doc.addPage();
+        y = 36;
+        drawTableHeader(doc, ml, y, pw, thH, numCol, descCol, amtCol);
+        y += thH;
+      }
+
+      // Row background (alternating)
+      const rowBg = i % 2 === 1 ? C.purpleLight : C.white;
+      doc.rect(ml, y, pw, rh).lineWidth(0.5).fillAndStroke(rowBg, C.border);
+
+      // Column dividers
+      doc.moveTo(ml + numCol, y).lineTo(ml + numCol, y + rh)
+         .lineWidth(0.5).strokeColor(C.border).stroke();
+      doc.moveTo(ml + numCol + descCol, y).lineTo(ml + numCol + descCol, y + rh)
+         .lineWidth(0.5).strokeColor(C.border).stroke();
+
+      // Item number
+      doc.fontSize(8.5).font('TC').fillColor(C.text);
+      doc.text(String(item.itemNumber), ml + 2, y + 4, {
+        width: numCol - 4, align: 'center', lineBreak: false,
+      });
+
+      // Description (bold, wraps)
+      doc.fontSize(8.5).font('TC-Bold').fillColor(C.text);
+      doc.text(item.description, ml + numCol + 5, y + 4, { width: descCol - 12 });
+
+      // Details (smaller, gray)
+      if (item.details) {
+        const detY = y + 4 + descH;
+        doc.fontSize(7.5).font('TC').fillColor(C.textLight);
+        doc.text(item.details, ml + numCol + 5, detY + 1, { width: descCol - 12 });
+      }
+
+      // Amount
+      doc.fontSize(8.5).font('TC').fillColor(C.text);
+      doc.text(formatCurrency(Number(item.amount)), ml + numCol + descCol + 2, y + 4, {
+        width: amtCol - 6, align: 'right', lineBreak: false,
+      });
+
+      y += rh;
+    }
+
+    y += 8;
+
+    // ── PRICING SUMMARY ─────────────────────────────
+    const priceX = ml + pw - 240;
+
+    doc.fontSize(9).font('TC').fillColor(C.text);
+    doc.text('原價總計 (未稅):', priceX, y, { lineBreak: false });
+    doc.text(formatCurrency(Number(quotation.originalTotal)), priceX + 140, y, {
+      width: 95, align: 'right', lineBreak: false,
+    });
+    y += 16;
+
+    const taxLabel = quotation.taxIncluded ? '(含稅)' : '(未稅)';
+    doc.fontSize(10).font('TC-Bold').fillColor(C.purple);
+    doc.text(`專案優惠價 ${taxLabel}:`, priceX, y, { lineBreak: false });
+    doc.text(formatCurrency(Number(quotation.discountedTotal)), priceX + 140, y, {
+      width: 95, align: 'right', lineBreak: false,
+    });
+    y += 20;
+
+    // ── TERMS ────────────────────────────────────────
+    if (quotation.notes) {
+      doc.moveTo(ml, y).lineTo(ml + pw, y)
+         .lineWidth(0.5).strokeColor(C.border).stroke();
+      y += 8;
+
+      doc.fontSize(8.5).font('TC-Bold').fillColor(C.purple);
+      doc.text('備註 / Terms & Conditions', ml, y, { lineBreak: false });
+      y += 14;
+
+      doc.fontSize(7.5).font('TC').fillColor(C.textLight);
+      const notesH = doc.heightOfString(quotation.notes, { width: pw });
+      doc.text(quotation.notes, ml, y, { width: pw });
+      y += notesH + 5;
+    }
+
+    // ── STAMP & SIGNATURE ────────────────────────────
+    const stampExists = fs.existsSync(STAMP_PATH);
+    const stampW = 95;
+    const stampH = 88;
+    const stampY = Math.max(y + 15, pageBottom - stampH - 25);
+
+    if (stampExists) {
+      doc.image(STAMP_PATH, ml + pw - stampW - 5, stampY, {
+        fit: [stampW, stampH],
+      });
+    }
+
+    doc.fontSize(9).font('TC').fillColor(C.text);
+    doc.text('甲方簽章：', ml, stampY + stampH - 22, { lineBreak: false });
+    doc.moveTo(ml + 52, stampY + stampH - 10)
+       .lineTo(ml + 170, stampY + stampH - 10)
+       .lineWidth(0.5).strokeColor(C.textLight).stroke();
 
     doc.end();
   });
 }
 
-function drawHeader(doc: PDFKit.PDFDocument, pageWidth: number) {
-  const centerX = doc.page.margins.left + pageWidth / 2;
-
-  doc.fontSize(24)
-     .font('NotoSansTC-Bold')
-     .text(config.company.name, doc.page.margins.left, 50, {
-       width: pageWidth,
-       align: 'center',
-     });
-
-  doc.moveDown(0.5);
-
-  doc.fontSize(18)
-     .font('NotoSansTC')
-     .text('合作契約書 / Quotation', {
-       width: pageWidth,
-       align: 'center',
-     });
-
-  doc.moveDown(1);
-
-  // Horizontal line
-  doc.moveTo(doc.page.margins.left, doc.y)
-     .lineTo(doc.page.margins.left + pageWidth, doc.y)
-     .stroke();
-
-  doc.moveDown(1);
-}
-
-function drawClientSection(doc: PDFKit.PDFDocument, client: Client, pageWidth: number) {
-  const startY = doc.y;
-  const labelWidth = 100;
-  const valueWidth = pageWidth / 2 - labelWidth - 20;
-
-  doc.fontSize(14)
-     .font('NotoSansTC-Bold')
-     .text('甲方 (Client)', doc.page.margins.left, startY);
-
-  doc.moveDown(0.5);
-
-  const leftColX = doc.page.margins.left;
-  const rightColX = doc.page.margins.left + pageWidth / 2 + 10;
-  let currentY = doc.y;
-
-  // Left column
-  drawLabelValue(doc, '公司名稱:', client.companyName, leftColX, currentY, labelWidth);
-  currentY += 20;
-  drawLabelValue(doc, '統一編號:', client.taxId || '-', leftColX, currentY, labelWidth);
-  currentY += 20;
-  drawLabelValue(doc, '聯絡人:', client.contactName, leftColX, currentY, labelWidth);
-
-  // Right column
-  currentY = doc.y - 60;
-  drawLabelValue(doc, '電子郵件:', client.email || '-', rightColX, currentY, labelWidth);
-  currentY += 20;
-  drawLabelValue(doc, '地址:', client.address || '-', rightColX, currentY, labelWidth);
-  currentY += 20;
-  drawLabelValue(doc, '電話:', client.phone || '-', rightColX, currentY, labelWidth);
-
-  doc.y = currentY + 30;
-  doc.moveDown(1);
-}
-
-function drawProviderSection(doc: PDFKit.PDFDocument, quotation: QuotationWithRelations, pageWidth: number) {
-  const labelWidth = 100;
-
-  doc.fontSize(14)
-     .font('NotoSansTC-Bold')
-     .text('乙方 (Provider)', doc.page.margins.left, doc.y);
-
-  doc.moveDown(0.5);
-
-  const leftColX = doc.page.margins.left;
-  const rightColX = doc.page.margins.left + pageWidth / 2 + 10;
-  let currentY = doc.y;
-
-  // Left column
-  drawLabelValue(doc, '專案名稱:', quotation.projectName, leftColX, currentY, labelWidth);
-  currentY += 20;
-  drawLabelValue(doc, '報價單號:', quotation.quotationNumber, leftColX, currentY, labelWidth);
-  currentY += 20;
-  drawLabelValue(doc, '報價日期:', formatDate(quotation.quotationDate), leftColX, currentY, labelWidth);
-
-  // Right column
-  currentY = doc.y - 60;
-  drawLabelValue(doc, '公司名稱:', config.company.name, rightColX, currentY, labelWidth);
-  currentY += 20;
-  drawLabelValue(doc, '統一編號:', config.company.taxId, rightColX, currentY, labelWidth);
-  currentY += 20;
-  drawLabelValue(doc, '電子郵件:', config.company.email, rightColX, currentY, labelWidth);
-
-  doc.y = currentY + 30;
-  doc.moveDown(1);
-
-  // Horizontal line
-  doc.moveTo(doc.page.margins.left, doc.y)
-     .lineTo(doc.page.margins.left + pageWidth, doc.y)
-     .stroke();
-
-  doc.moveDown(1);
-}
-
-function drawItemsTable(doc: PDFKit.PDFDocument, items: QuotationItem[], pageWidth: number) {
-  doc.fontSize(14)
-     .font('NotoSansTC-Bold')
-     .text('內容細項 (Items)', doc.page.margins.left, doc.y);
-
-  doc.moveDown(0.5);
-
-  const tableTop = doc.y;
-  const colWidths = {
-    number: 50,
-    description: pageWidth - 50 - 100,
-    amount: 100,
-  };
-
-  // Table header
-  const headerY = tableTop;
-  doc.fontSize(10)
-     .font('NotoSansTC-Bold');
-
-  doc.rect(doc.page.margins.left, headerY, pageWidth, 25)
-     .fillAndStroke('#f0f0f0', '#000');
-
-  doc.fillColor('#000')
-     .text('項次', doc.page.margins.left + 5, headerY + 8, { width: colWidths.number - 10 })
-     .text('內容描述', doc.page.margins.left + colWidths.number + 5, headerY + 8, { width: colWidths.description - 10 })
-     .text('金額 (NT$)', doc.page.margins.left + colWidths.number + colWidths.description + 5, headerY + 8, { width: colWidths.amount - 10, align: 'right' });
-
-  // Table rows
-  let currentY = headerY + 25;
-  doc.font('NotoSansTC').fontSize(10);
-
-  for (const item of items) {
-    const rowHeight = calculateRowHeight(doc, item, colWidths.description - 10);
-
-    // Check if we need a new page
-    if (currentY + rowHeight > doc.page.height - doc.page.margins.bottom - 100) {
-      doc.addPage();
-      currentY = doc.page.margins.top;
-    }
-
-    // Draw row border
-    doc.rect(doc.page.margins.left, currentY, pageWidth, rowHeight)
-       .stroke();
-
-    // Draw cell content
-    doc.text(item.itemNumber.toString(), doc.page.margins.left + 5, currentY + 5, { width: colWidths.number - 10 });
-
-    let descY = currentY + 5;
-    doc.text(item.description, doc.page.margins.left + colWidths.number + 5, descY, { width: colWidths.description - 10 });
-
-    if (item.details) {
-      doc.fontSize(8)
-         .fillColor('#666')
-         .text(item.details, doc.page.margins.left + colWidths.number + 5, doc.y + 2, { width: colWidths.description - 10 });
-      doc.fontSize(10).fillColor('#000');
-    }
-
-    doc.text(formatCurrency(Number(item.amount)), doc.page.margins.left + colWidths.number + colWidths.description + 5, currentY + 5, { width: colWidths.amount - 10, align: 'right' });
-
-    currentY += rowHeight;
-  }
-
-  doc.y = currentY + 10;
-}
-
-function drawPricingSummary(doc: PDFKit.PDFDocument, quotation: QuotationWithRelations, pageWidth: number) {
-  const summaryWidth = 250;
-  const startX = doc.page.margins.left + pageWidth - summaryWidth;
-  let currentY = doc.y;
-
-  doc.fontSize(11).font('NotoSansTC');
-
-  // Original total
-  doc.text('原價總計 (未稅):', startX, currentY, { width: 150 })
-     .text(formatCurrency(Number(quotation.originalTotal)), startX + 150, currentY, { width: 100, align: 'right' });
-
-  currentY += 25;
-
-  // Discounted total
-  doc.font('NotoSansTC-Bold')
-     .fontSize(12);
-
-  const taxLabel = quotation.taxIncluded ? '(含稅)' : '(未稅)';
-  doc.text(`專案優惠價 ${taxLabel}:`, startX, currentY, { width: 150 })
-     .text(formatCurrency(Number(quotation.discountedTotal)), startX + 150, currentY, { width: 100, align: 'right' });
-
-  doc.y = currentY + 30;
-  doc.moveDown(1);
-}
-
-function drawPaymentInfo(doc: PDFKit.PDFDocument, pageWidth: number) {
-  doc.fontSize(12)
-     .font('NotoSansTC-Bold')
-     .text('匯款資訊 (Payment Information)', doc.page.margins.left, doc.y);
-
-  doc.moveDown(0.5);
-
-  doc.fontSize(10).font('NotoSansTC');
-
-  const labelWidth = 80;
-  let currentY = doc.y;
-
-  drawLabelValue(doc, '銀行:', config.company.bank, doc.page.margins.left, currentY, labelWidth);
-  currentY += 18;
-  drawLabelValue(doc, '帳號:', `(${config.company.bankCode})${config.company.bankAccount}`, doc.page.margins.left, currentY, labelWidth);
-  currentY += 18;
-  drawLabelValue(doc, '戶名:', config.company.name, doc.page.margins.left, currentY, labelWidth);
-  currentY += 18;
-  drawLabelValue(doc, '統一編號:', config.company.taxId, doc.page.margins.left, currentY, labelWidth);
-
-  doc.y = currentY + 20;
-}
-
-function drawTerms(doc: PDFKit.PDFDocument, notes: string, pageWidth: number) {
-  // Check if we need a new page
-  if (doc.y > doc.page.height - doc.page.margins.bottom - 150) {
-    doc.addPage();
-  }
-
-  doc.moveDown(1);
-
-  doc.fontSize(12)
-     .font('NotoSansTC-Bold')
-     .text('備註 / 條款 (Terms & Conditions)', doc.page.margins.left, doc.y);
-
-  doc.moveDown(0.5);
-
-  doc.fontSize(9)
-     .font('NotoSansTC')
-     .text(notes, doc.page.margins.left, doc.y, {
-       width: pageWidth,
-       align: 'left',
-     });
-}
-
-// Helper functions
-function drawLabelValue(doc: PDFKit.PDFDocument, label: string, value: string, x: number, y: number, labelWidth: number) {
-  doc.fontSize(10)
-     .font('NotoSansTC-Bold')
-     .text(label, x, y, { width: labelWidth, continued: false });
-
-  doc.font('NotoSansTC')
-     .text(value, x + labelWidth, y);
+function drawTableHeader(
+  doc: PDFKit.PDFDocument,
+  ml: number, y: number, pw: number, thH: number,
+  numCol: number, descCol: number, amtCol: number,
+) {
+  doc.rect(ml, y, pw, thH).lineWidth(0.5).fillAndStroke(C.purpleBg, C.border);
+  doc.fontSize(8).font('TC-Bold').fillColor(C.purple);
+  doc.text('#', ml + 2, y + 5, { width: numCol - 4, align: 'center', lineBreak: false });
+  doc.text('內容描述', ml + numCol + 5, y + 5, { lineBreak: false });
+  doc.text('金額 (NT$)', ml + numCol + descCol + 2, y + 5, {
+    width: amtCol - 6, align: 'right', lineBreak: false,
+  });
 }
 
 function formatDate(date: Date): string {
@@ -327,10 +284,4 @@ function formatCurrency(amount: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(amount);
-}
-
-function calculateRowHeight(doc: PDFKit.PDFDocument, item: QuotationItem, maxWidth: number): number {
-  const descHeight = doc.heightOfString(item.description, { width: maxWidth });
-  const detailsHeight = item.details ? doc.heightOfString(item.details, { width: maxWidth }) + 5 : 0;
-  return Math.max(30, descHeight + detailsHeight + 15);
 }
