@@ -32,7 +32,7 @@ pnpm-debug.log*
 coverage/
 
 # Prisma
-prisma/migrations/
+# prisma/migrations/ is tracked for production deploy
 
 # Generated PDFs
 *.pdf
