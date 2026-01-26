@@ -1,6 +1,13 @@
 import PDFDocument from 'pdfkit';
 import type { Quotation, Client, QuotationItem } from '@prisma/client';
 import { config } from '../../../config/index.js';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const FONT_DIR = path.resolve(__dirname, '../../../../assets/fonts');
+const FONT_REGULAR = path.join(FONT_DIR, 'NotoSansTC-Regular.otf');
+const FONT_BOLD = path.join(FONT_DIR, 'NotoSansTC-Bold.otf');
 
 type QuotationWithRelations = Quotation & {
   client: Client;
@@ -25,9 +32,9 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     doc.on('end', () => resolve(Buffer.concat(chunks)));
     doc.on('error', reject);
 
-    // Register fonts for Chinese support
-    // Note: For production, you should add a Chinese font file (e.g., Noto Sans CJK)
-    // doc.registerFont('Chinese', 'path/to/NotoSansCJK-Regular.ttf');
+    // Register CJK fonts for Chinese support
+    doc.registerFont('NotoSansTC', FONT_REGULAR);
+    doc.registerFont('NotoSansTC-Bold', FONT_BOLD);
 
     const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
 
@@ -62,7 +69,7 @@ function drawHeader(doc: PDFKit.PDFDocument, pageWidth: number) {
   const centerX = doc.page.margins.left + pageWidth / 2;
 
   doc.fontSize(24)
-     .font('Helvetica-Bold')
+     .font('NotoSansTC-Bold')
      .text(config.company.name, doc.page.margins.left, 50, {
        width: pageWidth,
        align: 'center',
@@ -71,7 +78,7 @@ function drawHeader(doc: PDFKit.PDFDocument, pageWidth: number) {
   doc.moveDown(0.5);
 
   doc.fontSize(18)
-     .font('Helvetica')
+     .font('NotoSansTC')
      .text('合作契約書 / Quotation', {
        width: pageWidth,
        align: 'center',
@@ -93,7 +100,7 @@ function drawClientSection(doc: PDFKit.PDFDocument, client: Client, pageWidth: n
   const valueWidth = pageWidth / 2 - labelWidth - 20;
 
   doc.fontSize(14)
-     .font('Helvetica-Bold')
+     .font('NotoSansTC-Bold')
      .text('甲方 (Client)', doc.page.margins.left, startY);
 
   doc.moveDown(0.5);
@@ -125,7 +132,7 @@ function drawProviderSection(doc: PDFKit.PDFDocument, quotation: QuotationWithRe
   const labelWidth = 100;
 
   doc.fontSize(14)
-     .font('Helvetica-Bold')
+     .font('NotoSansTC-Bold')
      .text('乙方 (Provider)', doc.page.margins.left, doc.y);
 
   doc.moveDown(0.5);
@@ -162,7 +169,7 @@ function drawProviderSection(doc: PDFKit.PDFDocument, quotation: QuotationWithRe
 
 function drawItemsTable(doc: PDFKit.PDFDocument, items: QuotationItem[], pageWidth: number) {
   doc.fontSize(14)
-     .font('Helvetica-Bold')
+     .font('NotoSansTC-Bold')
      .text('內容細項 (Items)', doc.page.margins.left, doc.y);
 
   doc.moveDown(0.5);
@@ -177,7 +184,7 @@ function drawItemsTable(doc: PDFKit.PDFDocument, items: QuotationItem[], pageWid
   // Table header
   const headerY = tableTop;
   doc.fontSize(10)
-     .font('Helvetica-Bold');
+     .font('NotoSansTC-Bold');
 
   doc.rect(doc.page.margins.left, headerY, pageWidth, 25)
      .fillAndStroke('#f0f0f0', '#000');
@@ -189,7 +196,7 @@ function drawItemsTable(doc: PDFKit.PDFDocument, items: QuotationItem[], pageWid
 
   // Table rows
   let currentY = headerY + 25;
-  doc.font('Helvetica').fontSize(10);
+  doc.font('NotoSansTC').fontSize(10);
 
   for (const item of items) {
     const rowHeight = calculateRowHeight(doc, item, colWidths.description - 10);
@@ -230,7 +237,7 @@ function drawPricingSummary(doc: PDFKit.PDFDocument, quotation: QuotationWithRel
   const startX = doc.page.margins.left + pageWidth - summaryWidth;
   let currentY = doc.y;
 
-  doc.fontSize(11).font('Helvetica');
+  doc.fontSize(11).font('NotoSansTC');
 
   // Original total
   doc.text('原價總計 (未稅):', startX, currentY, { width: 150 })
@@ -239,7 +246,7 @@ function drawPricingSummary(doc: PDFKit.PDFDocument, quotation: QuotationWithRel
   currentY += 25;
 
   // Discounted total
-  doc.font('Helvetica-Bold')
+  doc.font('NotoSansTC-Bold')
      .fontSize(12);
 
   const taxLabel = quotation.taxIncluded ? '(含稅)' : '(未稅)';
@@ -252,12 +259,12 @@ function drawPricingSummary(doc: PDFKit.PDFDocument, quotation: QuotationWithRel
 
 function drawPaymentInfo(doc: PDFKit.PDFDocument, pageWidth: number) {
   doc.fontSize(12)
-     .font('Helvetica-Bold')
+     .font('NotoSansTC-Bold')
      .text('匯款資訊 (Payment Information)', doc.page.margins.left, doc.y);
 
   doc.moveDown(0.5);
 
-  doc.fontSize(10).font('Helvetica');
+  doc.fontSize(10).font('NotoSansTC');
 
   const labelWidth = 80;
   let currentY = doc.y;
@@ -282,13 +289,13 @@ function drawTerms(doc: PDFKit.PDFDocument, notes: string, pageWidth: number) {
   doc.moveDown(1);
 
   doc.fontSize(12)
-     .font('Helvetica-Bold')
+     .font('NotoSansTC-Bold')
      .text('備註 / 條款 (Terms & Conditions)', doc.page.margins.left, doc.y);
 
   doc.moveDown(0.5);
 
   doc.fontSize(9)
-     .font('Helvetica')
+     .font('NotoSansTC')
      .text(notes, doc.page.margins.left, doc.y, {
        width: pageWidth,
        align: 'left',
@@ -298,10 +305,10 @@ function drawTerms(doc: PDFKit.PDFDocument, notes: string, pageWidth: number) {
 // Helper functions
 function drawLabelValue(doc: PDFKit.PDFDocument, label: string, value: string, x: number, y: number, labelWidth: number) {
   doc.fontSize(10)
-     .font('Helvetica-Bold')
+     .font('NotoSansTC-Bold')
      .text(label, x, y, { width: labelWidth, continued: false });
 
-  doc.font('Helvetica')
+  doc.font('NotoSansTC')
      .text(value, x + labelWidth, y);
 }
 

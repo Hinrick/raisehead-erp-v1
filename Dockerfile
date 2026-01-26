@@ -24,6 +24,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY package.json pnpm-lock.yaml .npmrc ./
 COPY prisma ./prisma
+COPY assets ./assets
 RUN pnpm db:generate
 EXPOSE 3000
 CMD ["node", "dist/server.js"]
