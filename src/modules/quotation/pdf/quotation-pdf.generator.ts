@@ -251,8 +251,46 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
 
     // ── TERMS + PRICING (side by side) ─────────────
     const termsBoxW = pw * 0.44;
+    const bulletW = termsBoxW - 30;
     const priceSectionX = ml + pw * 0.50;
     const priceSectionW = pw * 0.50;
+
+    // Pre-measure terms box height with actual text wrapping
+    const ptLines = quotation.paymentTerms.map(pt => pt.content);
+    const noteLines = quotation.notes.map(n => n.content);
+    const hasPT = ptLines.length > 0;
+    const hasNotes = noteLines.length > 0;
+    const hasTerms = hasPT || hasNotes;
+
+    let termsH = 0;
+    const ptHeights: number[] = [];
+    const noteHeights: number[] = [];
+
+    if (hasTerms) {
+      doc.fontSize(8.5).font('TC');
+      for (const line of ptLines) {
+        const h = doc.heightOfString('•   ' + line, { width: bulletW });
+        ptHeights.push(h);
+        termsH += h + 4;
+      }
+      for (const line of noteLines) {
+        const h = doc.heightOfString('•   ' + line, { width: bulletW });
+        noteHeights.push(h);
+        termsH += h + 4;
+      }
+      termsH += 16 + (hasPT ? 20 : 0) + (hasNotes ? 20 : 0); // padding + headers
+      termsH = Math.max(65, termsH);
+    }
+
+    // Check if terms + pricing + bank + signatures + footer fit on this page
+    const pricingH = 65;
+    const bankSigFooterH = 130;
+    const sectionH = Math.max(termsH, pricingH) + 10 + bankSigFooterH;
+    if (y + sectionH > fullH - 30) {
+      doc.addPage();
+      doc.rect(0, 0, fullW, fullH).fill(C.pageBg);
+      y = 30;
+    }
 
     // Pricing (right side)
     doc.fontSize(9.5).font('TC').fillColor(C.textLight);
@@ -273,17 +311,7 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     });
 
     // Terms box (left side) — payment terms + notes
-    const ptLines = quotation.paymentTerms.map(pt => pt.content);
-    const noteLines = quotation.notes.map(n => n.content);
-    const allTermLines = [...ptLines, ...noteLines];
-
-    if (allTermLines.length > 0) {
-      // Header for payment terms section
-      const hasPT = ptLines.length > 0;
-      const hasNotes = noteLines.length > 0;
-      const headerCount = (hasPT ? 1 : 0) + (hasNotes ? 1 : 0);
-      const termsH = Math.max(58, 36 + headerCount * 18 + allTermLines.length * 16);
-
+    if (hasTerms) {
       doc.roundedRect(ml, y - 2, termsBoxW, termsH, 8).fill(C.termsBg);
 
       let ny = y + 10;
@@ -291,35 +319,27 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
       if (hasPT) {
         doc.fontSize(9.5).font('TC-Bold').fillColor(C.indigo);
         doc.text('付款條件 Payment Terms', ml + 15, ny, { lineBreak: false });
-        ny += 18;
+        ny += 20;
         doc.fontSize(8.5).font('TC').fillColor(C.indigo);
-        for (const line of ptLines) {
-          doc.text('•   ' + line, ml + 15, ny, {
-            width: termsBoxW - 30, lineBreak: false,
-          });
-          ny += 16;
+        for (let i = 0; i < ptLines.length; i++) {
+          doc.text('•   ' + ptLines[i], ml + 15, ny, { width: bulletW });
+          ny += ptHeights[i] + 4;
         }
       }
 
       if (hasNotes) {
         doc.fontSize(9.5).font('TC-Bold').fillColor(C.indigo);
         doc.text('備註 Notes', ml + 15, ny, { lineBreak: false });
-        ny += 18;
+        ny += 20;
         doc.fontSize(8.5).font('TC').fillColor(C.indigo);
-        for (const line of noteLines) {
-          doc.text('•   ' + line, ml + 15, ny, {
-            width: termsBoxW - 30, lineBreak: false,
-          });
-          ny += 16;
+        for (let i = 0; i < noteLines.length; i++) {
+          doc.text('•   ' + noteLines[i], ml + 15, ny, { width: bulletW });
+          ny += noteHeights[i] + 4;
         }
       }
-
-      y += Math.max(termsH, 65) + 10;
-    } else {
-      y += 65;
     }
 
-    y += 10;
+    y += Math.max(hasTerms ? termsH : 0, pricingH) + 20;
 
     // ── BANK DETAILS + SIGNATURES ──────────────────
     doc.fontSize(11).font('TC-Bold').fillColor(C.text);
