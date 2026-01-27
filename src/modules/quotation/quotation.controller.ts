@@ -51,7 +51,7 @@ export async function generatePdf(req: Request, res: Response) {
 
   const pdfBuffer = await generateQuotationPdf(quotation);
 
-  const filename = `quotation-${quotation.quotationNumber.replace('#', '')}-${quotation.client.companyName}.pdf`;
+  const filename = `quotation-${quotation.quotationNumber.replace('#', '')}-${quotation.contact.displayName}.pdf`;
 
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(filename)}"`);

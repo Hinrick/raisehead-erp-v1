@@ -16,7 +16,8 @@ model User {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  quotations Quotation[]
+  quotations  Quotation[]
+  oauthTokens OAuthToken[]
 }
 
 enum Role {
@@ -24,19 +25,141 @@ enum Role {
   USER
 }
 
-model Client {
-  id          String   @id @default(uuid())
-  companyName String // 公司／客戶名稱
-  taxId       String? // 統一編號
-  contactName String // 聯絡人
-  email       String? // 電子郵件
-  address     String? // 地址
-  phone       String? // 聯絡電話
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+// ── Contact System ──────────────────────────────────
 
-  quotations Quotation[]
+enum ContactType {
+  PERSON
+  COMPANY
 }
+
+enum SyncProvider {
+  GOOGLE
+  OUTLOOK
+  NOTION
+}
+
+enum SyncStatus {
+  SYNCED
+  PENDING
+  ERROR
+}
+
+enum SyncDirection {
+  INBOUND
+  OUTBOUND
+  BOTH
+}
+
+model Contact {
+  id          String      @id @default(uuid())
+  type        ContactType
+  displayName String
+  email       String?
+  phone       String?
+  address     String?
+  notes       String?     @db.Text
+
+  // COMPANY fields
+  taxId String?
+
+  // PERSON fields
+  firstName String?
+  lastName  String?
+  jobTitle  String?
+
+  // PERSON belongs to COMPANY (self-reference)
+  companyId String?
+  company   Contact?  @relation("CompanyMembers", fields: [companyId], references: [id])
+  members   Contact[] @relation("CompanyMembers")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Relations
+  quotations      Quotation[]         @relation("ContactQuotations")
+  personQuotations Quotation[]        @relation("ContactPersonQuotations")
+  tags            ContactTag[]
+  externalLinks   ExternalContactLink[]
+}
+
+model Tag {
+  id       String @id @default(uuid())
+  name     String @unique
+  color    String @default("#6D28D9")
+
+  contacts ContactTag[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ContactTag {
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  tagId     String
+  tag       Tag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([contactId, tagId])
+}
+
+model ExternalContactLink {
+  id           String       @id @default(uuid())
+  contactId    String
+  contact      Contact      @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  provider     SyncProvider
+  externalId   String
+  externalData Json?
+  lastSyncedAt DateTime?
+  syncStatus   SyncStatus   @default(PENDING)
+  syncError    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([provider, externalId])
+}
+
+model IntegrationConfig {
+  id       String       @id @default(uuid())
+  provider SyncProvider @unique
+  enabled  Boolean      @default(false)
+  config   Json         @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OAuthToken {
+  id           String       @id @default(uuid())
+  userId       String
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  provider     SyncProvider
+  accessToken  String
+  refreshToken String?
+  expiresAt    DateTime?
+  scope        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, provider])
+}
+
+model SyncLog {
+  id               String        @id @default(uuid())
+  provider         SyncProvider
+  direction        SyncDirection
+  status           SyncStatus
+  contactId        String?
+  externalId       String?
+  message          String?
+  errorDetails     String?       @db.Text
+  recordsProcessed Int           @default(0)
+
+  createdAt DateTime @default(now())
+}
+
+// ── Quotation System ────────────────────────────────
 
 model Quotation {
   id              String   @id @default(uuid())
@@ -45,10 +168,12 @@ model Quotation {
   quotationDate   DateTime // 報價日期
 
   // Relations
-  clientId    String
-  client      Client @relation(fields: [clientId], references: [id])
-  createdById String
-  createdBy   User   @relation(fields: [createdById], references: [id])
+  contactId       String
+  contact         Contact @relation("ContactQuotations", fields: [contactId], references: [id])
+  contactPersonId String?
+  contactPerson   Contact? @relation("ContactPersonQuotations", fields: [contactPersonId], references: [id])
+  createdById     String
+  createdBy       User   @relation(fields: [createdById], references: [id])
 
   // Pricing
   items           QuotationItem[]

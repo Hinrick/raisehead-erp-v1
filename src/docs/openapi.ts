@@ -29,16 +29,32 @@ const UserSchema = {
   },
 };
 
-const ClientSchema = {
+const TagSchema = {
   type: 'object',
   properties: {
     id: { type: 'string', format: 'uuid' },
-    companyName: { type: 'string' },
-    taxId: { type: 'string', nullable: true },
-    contactName: { type: 'string' },
+    name: { type: 'string' },
+    color: { type: 'string' },
+    createdAt: { type: 'string', format: 'date-time' },
+    updatedAt: { type: 'string', format: 'date-time' },
+  },
+};
+
+const ContactSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    type: { type: 'string', enum: ['PERSON', 'COMPANY'] },
+    displayName: { type: 'string' },
     email: { type: 'string', nullable: true },
-    address: { type: 'string', nullable: true },
     phone: { type: 'string', nullable: true },
+    address: { type: 'string', nullable: true },
+    notes: { type: 'string', nullable: true },
+    taxId: { type: 'string', nullable: true },
+    firstName: { type: 'string', nullable: true },
+    lastName: { type: 'string', nullable: true },
+    jobTitle: { type: 'string', nullable: true },
+    companyId: { type: 'string', format: 'uuid', nullable: true },
     createdAt: { type: 'string', format: 'date-time' },
     updatedAt: { type: 'string', format: 'date-time' },
   },
@@ -63,6 +79,8 @@ const QuotationSchema = {
     quotationNumber: { type: 'string' },
     projectName: { type: 'string' },
     quotationDate: { type: 'string', format: 'date-time' },
+    contactId: { type: 'string', format: 'uuid' },
+    contactPersonId: { type: 'string', format: 'uuid', nullable: true },
     status: { type: 'string', enum: ['DRAFT', 'SENT', 'ACCEPTED', 'REJECTED', 'EXPIRED'] },
     originalTotal: { type: 'string', description: 'Decimal as string' },
     discountedTotal: { type: 'string', description: 'Decimal as string' },
@@ -94,6 +112,33 @@ const QuotationSchema = {
   },
 };
 
+const IntegrationConfigSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    provider: { type: 'string', enum: ['GOOGLE', 'OUTLOOK', 'NOTION'] },
+    enabled: { type: 'boolean' },
+    config: { type: 'object' },
+    createdAt: { type: 'string', format: 'date-time' },
+    updatedAt: { type: 'string', format: 'date-time' },
+  },
+};
+
+const SyncLogSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    provider: { type: 'string', enum: ['GOOGLE', 'OUTLOOK', 'NOTION'] },
+    direction: { type: 'string', enum: ['INBOUND', 'OUTBOUND', 'BOTH'] },
+    status: { type: 'string', enum: ['SYNCED', 'PENDING', 'ERROR'] },
+    contactId: { type: 'string', format: 'uuid', nullable: true },
+    externalId: { type: 'string', nullable: true },
+    message: { type: 'string', nullable: true },
+    recordsProcessed: { type: 'integer' },
+    createdAt: { type: 'string', format: 'date-time' },
+  },
+};
+
 const idParam = {
   name: 'id',
   in: 'path',
@@ -101,12 +146,19 @@ const idParam = {
   schema: { type: 'string', format: 'uuid' },
 };
 
+const providerParam = {
+  name: 'provider',
+  in: 'path',
+  required: true,
+  schema: { type: 'string', enum: ['GOOGLE', 'OUTLOOK', 'NOTION'] },
+};
+
 export const openApiDocument = {
   openapi: '3.0.3',
   info: {
     title: 'RaiseHead ERP API',
-    version: '1.0.0',
-    description: '抬頭工作室 ERP 系統 - 報價單管理 API',
+    version: '2.0.0',
+    description: '抬頭工作室 ERP 系統 - 聯絡人管理 & 報價單管理 API',
     contact: {
       name: 'RaiseHead Studio',
       email: 'contact@raisehead.studio',
@@ -126,9 +178,12 @@ export const openApiDocument = {
     },
     schemas: {
       User: UserSchema,
-      Client: ClientSchema,
+      Contact: ContactSchema,
+      Tag: TagSchema,
       QuotationItem: QuotationItemSchema,
       Quotation: QuotationSchema,
+      IntegrationConfig: IntegrationConfigSchema,
+      SyncLog: SyncLogSchema,
       Error: ErrorResponse,
       Pagination: PaginationSchema,
     },
@@ -285,26 +340,28 @@ export const openApiDocument = {
       },
     },
 
-    // ==================== Clients ====================
-    '/api/clients': {
+    // ==================== Contacts ====================
+    '/api/contacts': {
       get: {
-        tags: ['Clients'],
-        summary: 'List all clients (paginated)',
+        tags: ['Contacts'],
+        summary: 'List all contacts (paginated)',
         security: bearerAuth,
         parameters: [
-          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 }, description: 'Page number' },
-          { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 }, description: 'Items per page' },
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+          { name: 'type', in: 'query', schema: { type: 'string', enum: ['PERSON', 'COMPANY'] } },
+          { name: 'tagId', in: 'query', schema: { type: 'string', format: 'uuid' } },
         ],
         responses: {
           '200': {
-            description: 'List of clients',
+            description: 'List of contacts',
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
                   properties: {
                     success: { type: 'boolean', example: true },
-                    data: { type: 'array', items: { $ref: '#/components/schemas/Client' } },
+                    data: { type: 'array', items: { $ref: '#/components/schemas/Contact' } },
                     pagination: { $ref: '#/components/schemas/Pagination' },
                   },
                 },
@@ -314,8 +371,8 @@ export const openApiDocument = {
         },
       },
       post: {
-        tags: ['Clients'],
-        summary: 'Create a new client',
+        tags: ['Contacts'],
+        summary: 'Create a new contact',
         security: bearerAuth,
         requestBody: {
           required: true,
@@ -323,14 +380,19 @@ export const openApiDocument = {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['companyName', 'contactName'],
+                required: ['type', 'displayName'],
                 properties: {
-                  companyName: { type: 'string', example: '範例科技股份有限公司' },
-                  taxId: { type: 'string', example: '12345678' },
-                  contactName: { type: 'string', example: '王小明' },
-                  email: { type: 'string', format: 'email', example: 'contact@example.com' },
-                  address: { type: 'string', example: '台北市信義區' },
-                  phone: { type: 'string', example: '02-1234-5678' },
+                  type: { type: 'string', enum: ['PERSON', 'COMPANY'] },
+                  displayName: { type: 'string', example: '範例科技股份有限公司' },
+                  email: { type: 'string', format: 'email' },
+                  phone: { type: 'string' },
+                  address: { type: 'string' },
+                  notes: { type: 'string' },
+                  taxId: { type: 'string' },
+                  firstName: { type: 'string' },
+                  lastName: { type: 'string' },
+                  jobTitle: { type: 'string' },
+                  companyId: { type: 'string', format: 'uuid' },
                 },
               },
             },
@@ -338,14 +400,14 @@ export const openApiDocument = {
         },
         responses: {
           '201': {
-            description: 'Client created',
+            description: 'Contact created',
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
                   properties: {
                     success: { type: 'boolean', example: true },
-                    data: { $ref: '#/components/schemas/Client' },
+                    data: { $ref: '#/components/schemas/Contact' },
                     message: { type: 'string' },
                   },
                 },
@@ -356,14 +418,14 @@ export const openApiDocument = {
       },
     },
 
-    '/api/clients/search': {
+    '/api/contacts/search': {
       get: {
-        tags: ['Clients'],
-        summary: 'Search clients',
-        description: 'Search by company name, contact name, or tax ID',
+        tags: ['Contacts'],
+        summary: 'Search contacts',
+        description: 'Search by name, email, or tax ID',
         security: bearerAuth,
         parameters: [
-          { name: 'q', in: 'query', required: true, schema: { type: 'string' }, description: 'Search query' },
+          { name: 'q', in: 'query', required: true, schema: { type: 'string' } },
         ],
         responses: {
           '200': {
@@ -374,7 +436,7 @@ export const openApiDocument = {
                   type: 'object',
                   properties: {
                     success: { type: 'boolean', example: true },
-                    data: { type: 'array', items: { $ref: '#/components/schemas/Client' } },
+                    data: { type: 'array', items: { $ref: '#/components/schemas/Contact' } },
                   },
                 },
               },
@@ -384,59 +446,36 @@ export const openApiDocument = {
       },
     },
 
-    '/api/clients/{id}': {
+    '/api/contacts/{id}': {
       get: {
-        tags: ['Clients'],
-        summary: 'Get a client by ID (with quotations)',
+        tags: ['Contacts'],
+        summary: 'Get a contact by ID (with tags, members, quotations, external links)',
         security: bearerAuth,
         parameters: [idParam],
         responses: {
           '200': {
-            description: 'Client details with quotations',
+            description: 'Contact details',
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
                   properties: {
                     success: { type: 'boolean', example: true },
-                    data: {
-                      allOf: [
-                        { $ref: '#/components/schemas/Client' },
-                        {
-                          type: 'object',
-                          properties: {
-                            quotations: {
-                              type: 'array',
-                              items: {
-                                type: 'object',
-                                properties: {
-                                  id: { type: 'string', format: 'uuid' },
-                                  quotationNumber: { type: 'string' },
-                                  projectName: { type: 'string' },
-                                  status: { type: 'string' },
-                                  discountedTotal: { type: 'string' },
-                                  createdAt: { type: 'string', format: 'date-time' },
-                                },
-                              },
-                            },
-                          },
-                        },
-                      ],
-                    },
+                    data: { $ref: '#/components/schemas/Contact' },
                   },
                 },
               },
             },
           },
           '404': {
-            description: 'Client not found',
+            description: 'Contact not found',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
         },
       },
       put: {
-        tags: ['Clients'],
-        summary: 'Update a client',
+        tags: ['Contacts'],
+        summary: 'Update a contact',
         security: bearerAuth,
         parameters: [idParam],
         requestBody: {
@@ -446,12 +485,17 @@ export const openApiDocument = {
               schema: {
                 type: 'object',
                 properties: {
-                  companyName: { type: 'string' },
-                  taxId: { type: 'string' },
-                  contactName: { type: 'string' },
-                  email: { type: 'string', format: 'email' },
-                  address: { type: 'string' },
+                  type: { type: 'string', enum: ['PERSON', 'COMPANY'] },
+                  displayName: { type: 'string' },
+                  email: { type: 'string' },
                   phone: { type: 'string' },
+                  address: { type: 'string' },
+                  notes: { type: 'string' },
+                  taxId: { type: 'string' },
+                  firstName: { type: 'string' },
+                  lastName: { type: 'string' },
+                  jobTitle: { type: 'string' },
+                  companyId: { type: 'string', format: 'uuid' },
                 },
               },
             },
@@ -459,14 +503,14 @@ export const openApiDocument = {
         },
         responses: {
           '200': {
-            description: 'Client updated',
+            description: 'Contact updated',
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
                   properties: {
                     success: { type: 'boolean', example: true },
-                    data: { $ref: '#/components/schemas/Client' },
+                    data: { $ref: '#/components/schemas/Contact' },
                     message: { type: 'string' },
                   },
                 },
@@ -474,20 +518,20 @@ export const openApiDocument = {
             },
           },
           '404': {
-            description: 'Client not found',
+            description: 'Contact not found',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
         },
       },
       delete: {
-        tags: ['Clients'],
-        summary: 'Delete a client',
-        description: 'Fails if client has existing quotations',
+        tags: ['Contacts'],
+        summary: 'Delete a contact',
+        description: 'Fails if contact has existing quotations',
         security: bearerAuth,
         parameters: [idParam],
         responses: {
           '200': {
-            description: 'Client deleted',
+            description: 'Contact deleted',
             content: {
               'application/json': {
                 schema: {
@@ -501,12 +545,234 @@ export const openApiDocument = {
             },
           },
           '400': {
-            description: 'Cannot delete client with existing quotations',
+            description: 'Cannot delete contact with existing quotations',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
           '404': {
-            description: 'Client not found',
+            description: 'Contact not found',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+    },
+
+    '/api/contacts/{id}/tags': {
+      post: {
+        tags: ['Contacts'],
+        summary: 'Add tags to a contact',
+        security: bearerAuth,
+        parameters: [idParam],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['tagIds'],
+                properties: {
+                  tagIds: { type: 'array', items: { type: 'string', format: 'uuid' } },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Tags added',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/Contact' },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/api/contacts/{id}/tags/{tagId}': {
+      delete: {
+        tags: ['Contacts'],
+        summary: 'Remove a tag from a contact',
+        security: bearerAuth,
+        parameters: [
+          idParam,
+          { name: 'tagId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          '200': {
+            description: 'Tag removed',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/Contact' },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/api/contacts/{id}/members': {
+      get: {
+        tags: ['Contacts'],
+        summary: 'List people under a company contact',
+        security: bearerAuth,
+        parameters: [idParam],
+        responses: {
+          '200': {
+            description: 'List of member contacts',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { type: 'array', items: { $ref: '#/components/schemas/Contact' } },
+                  },
+                },
+              },
+            },
+          },
+          '400': {
+            description: 'Contact is not a company',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+    },
+
+    // ==================== Tags ====================
+    '/api/tags': {
+      get: {
+        tags: ['Tags'],
+        summary: 'List all tags',
+        security: bearerAuth,
+        responses: {
+          '200': {
+            description: 'List of tags',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { type: 'array', items: { $ref: '#/components/schemas/Tag' } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      post: {
+        tags: ['Tags'],
+        summary: 'Create a tag',
+        security: bearerAuth,
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name'],
+                properties: {
+                  name: { type: 'string', example: 'VIP' },
+                  color: { type: 'string', example: '#6D28D9' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Tag created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/Tag' },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/api/tags/{id}': {
+      put: {
+        tags: ['Tags'],
+        summary: 'Update a tag',
+        security: bearerAuth,
+        parameters: [idParam],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  color: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Tag updated',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/Tag' },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      delete: {
+        tags: ['Tags'],
+        summary: 'Delete a tag (cascades junction)',
+        security: bearerAuth,
+        parameters: [idParam],
+        responses: {
+          '200': {
+            description: 'Tag deleted',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -519,13 +785,9 @@ export const openApiDocument = {
         summary: 'List all quotations (paginated)',
         security: bearerAuth,
         parameters: [
-          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 }, description: 'Page number' },
-          { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 }, description: 'Items per page' },
-          {
-            name: 'status', in: 'query',
-            schema: { type: 'string', enum: ['DRAFT', 'SENT', 'ACCEPTED', 'REJECTED', 'EXPIRED'] },
-            description: 'Filter by status',
-          },
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['DRAFT', 'SENT', 'ACCEPTED', 'REJECTED', 'EXPIRED'] } },
         ],
         responses: {
           '200': {
@@ -536,38 +798,7 @@ export const openApiDocument = {
                   type: 'object',
                   properties: {
                     success: { type: 'boolean', example: true },
-                    data: {
-                      type: 'array',
-                      items: {
-                        allOf: [
-                          { $ref: '#/components/schemas/Quotation' },
-                          {
-                            type: 'object',
-                            properties: {
-                              client: {
-                                type: 'object',
-                                properties: {
-                                  id: { type: 'string', format: 'uuid' },
-                                  companyName: { type: 'string' },
-                                  contactName: { type: 'string' },
-                                },
-                              },
-                              createdBy: {
-                                type: 'object',
-                                properties: {
-                                  id: { type: 'string', format: 'uuid' },
-                                  name: { type: 'string' },
-                                },
-                              },
-                              _count: {
-                                type: 'object',
-                                properties: { items: { type: 'integer' } },
-                              },
-                            },
-                          },
-                        ],
-                      },
-                    },
+                    data: { type: 'array', items: { $ref: '#/components/schemas/Quotation' } },
                     pagination: { $ref: '#/components/schemas/Pagination' },
                   },
                 },
@@ -586,12 +817,13 @@ export const openApiDocument = {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['quotationNumber', 'projectName', 'quotationDate', 'clientId', 'items', 'originalTotal', 'discountedTotal'],
+                required: ['quotationNumber', 'projectName', 'quotationDate', 'contactId', 'items', 'originalTotal', 'discountedTotal'],
                 properties: {
                   quotationNumber: { type: 'string', example: '#001' },
                   projectName: { type: 'string', example: '官網改版專案' },
                   quotationDate: { type: 'string', example: '2025-01-15' },
-                  clientId: { type: 'string', format: 'uuid' },
+                  contactId: { type: 'string', format: 'uuid' },
+                  contactPersonId: { type: 'string', format: 'uuid', nullable: true },
                   items: {
                     type: 'array',
                     minItems: 1,
@@ -609,8 +841,8 @@ export const openApiDocument = {
                   originalTotal: { type: 'number', example: 100000 },
                   discountedTotal: { type: 'number', example: 90000 },
                   taxIncluded: { type: 'boolean', default: true },
-                  paymentTerms: { type: 'array', items: { type: 'string' }, example: ['簽約後付 50%', '完成後付 50%'] },
-                  notes: { type: 'array', items: { type: 'string' }, example: ['報價有效期限 30 天'] },
+                  paymentTerms: { type: 'array', items: { type: 'string' } },
+                  notes: { type: 'array', items: { type: 'string' } },
                 },
               },
             },
@@ -625,18 +857,7 @@ export const openApiDocument = {
                   type: 'object',
                   properties: {
                     success: { type: 'boolean', example: true },
-                    data: {
-                      allOf: [
-                        { $ref: '#/components/schemas/Quotation' },
-                        {
-                          type: 'object',
-                          properties: {
-                            client: { $ref: '#/components/schemas/Client' },
-                            items: { type: 'array', items: { $ref: '#/components/schemas/QuotationItem' } },
-                          },
-                        },
-                      ],
-                    },
+                    data: { $ref: '#/components/schemas/Quotation' },
                     message: { type: 'string' },
                   },
                 },
@@ -644,7 +865,7 @@ export const openApiDocument = {
             },
           },
           '404': {
-            description: 'Client not found',
+            description: 'Contact not found',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
           '409': {
@@ -671,9 +892,7 @@ export const openApiDocument = {
                     success: { type: 'boolean', example: true },
                     data: {
                       type: 'object',
-                      properties: {
-                        nextNumber: { type: 'string', example: '#001' },
-                      },
+                      properties: { nextNumber: { type: 'string', example: '#001' } },
                     },
                   },
                 },
@@ -692,33 +911,14 @@ export const openApiDocument = {
         parameters: [idParam],
         responses: {
           '200': {
-            description: 'Quotation details with items and client',
+            description: 'Quotation details',
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
                   properties: {
                     success: { type: 'boolean', example: true },
-                    data: {
-                      allOf: [
-                        { $ref: '#/components/schemas/Quotation' },
-                        {
-                          type: 'object',
-                          properties: {
-                            client: { $ref: '#/components/schemas/Client' },
-                            createdBy: {
-                              type: 'object',
-                              properties: {
-                                id: { type: 'string', format: 'uuid' },
-                                name: { type: 'string' },
-                                email: { type: 'string', format: 'email' },
-                              },
-                            },
-                            items: { type: 'array', items: { $ref: '#/components/schemas/QuotationItem' } },
-                          },
-                        },
-                      ],
-                    },
+                    data: { $ref: '#/components/schemas/Quotation' },
                   },
                 },
               },
@@ -745,19 +945,9 @@ export const openApiDocument = {
                   quotationNumber: { type: 'string' },
                   projectName: { type: 'string' },
                   quotationDate: { type: 'string' },
-                  clientId: { type: 'string', format: 'uuid' },
-                  items: {
-                    type: 'array',
-                    items: {
-                      type: 'object',
-                      properties: {
-                        itemNumber: { type: 'integer' },
-                        description: { type: 'string' },
-                        details: { type: 'string' },
-                        amount: { type: 'number' },
-                      },
-                    },
-                  },
+                  contactId: { type: 'string', format: 'uuid' },
+                  contactPersonId: { type: 'string', format: 'uuid', nullable: true },
+                  items: { type: 'array', items: { type: 'object' } },
                   originalTotal: { type: 'number' },
                   discountedTotal: { type: 'number' },
                   taxIncluded: { type: 'boolean' },
@@ -778,18 +968,7 @@ export const openApiDocument = {
                   type: 'object',
                   properties: {
                     success: { type: 'boolean', example: true },
-                    data: {
-                      allOf: [
-                        { $ref: '#/components/schemas/Quotation' },
-                        {
-                          type: 'object',
-                          properties: {
-                            client: { $ref: '#/components/schemas/Client' },
-                            items: { type: 'array', items: { $ref: '#/components/schemas/QuotationItem' } },
-                          },
-                        },
-                      ],
-                    },
+                    data: { $ref: '#/components/schemas/Quotation' },
                     message: { type: 'string' },
                   },
                 },
@@ -798,10 +977,6 @@ export const openApiDocument = {
           },
           '404': {
             description: 'Quotation not found',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
-          },
-          '409': {
-            description: 'Quotation number already exists',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
         },
@@ -843,11 +1018,7 @@ export const openApiDocument = {
         responses: {
           '200': {
             description: 'PDF file download',
-            content: {
-              'application/pdf': {
-                schema: { type: 'string', format: 'binary' },
-              },
-            },
+            content: { 'application/pdf': { schema: { type: 'string', format: 'binary' } } },
           },
           '404': {
             description: 'Quotation not found',
@@ -879,10 +1050,399 @@ export const openApiDocument = {
               },
             },
           },
-          '404': {
-            description: 'Quotation not found',
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+        },
+      },
+    },
+
+    // ==================== Integrations ====================
+    '/api/integrations': {
+      get: {
+        tags: ['Integrations'],
+        summary: 'List all integration configs (ADMIN)',
+        security: bearerAuth,
+        responses: {
+          '200': {
+            description: 'List of integration configs',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { type: 'array', items: { $ref: '#/components/schemas/IntegrationConfig' } },
+                  },
+                },
+              },
+            },
           },
+        },
+      },
+    },
+
+    '/api/integrations/{provider}': {
+      get: {
+        tags: ['Integrations'],
+        summary: 'Get provider config',
+        security: bearerAuth,
+        parameters: [providerParam],
+        responses: {
+          '200': {
+            description: 'Integration config',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/IntegrationConfig' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      put: {
+        tags: ['Integrations'],
+        summary: 'Upsert provider config',
+        security: bearerAuth,
+        parameters: [providerParam],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  enabled: { type: 'boolean' },
+                  config: { type: 'object' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Config updated',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/IntegrationConfig' },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/api/integrations/{provider}/enable': {
+      post: {
+        tags: ['Integrations'],
+        summary: 'Enable provider',
+        security: bearerAuth,
+        parameters: [providerParam],
+        responses: {
+          '200': {
+            description: 'Provider enabled',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/IntegrationConfig' },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/api/integrations/{provider}/disable': {
+      post: {
+        tags: ['Integrations'],
+        summary: 'Disable provider',
+        security: bearerAuth,
+        parameters: [providerParam],
+        responses: {
+          '200': {
+            description: 'Provider disabled',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/IntegrationConfig' },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    // ==================== OAuth ====================
+    '/api/oauth/google/authorize': {
+      get: {
+        tags: ['OAuth'],
+        summary: 'Get Google authorization URL',
+        security: bearerAuth,
+        responses: {
+          '200': {
+            description: 'Authorization URL',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: {
+                      type: 'object',
+                      properties: { url: { type: 'string' } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/api/oauth/google/callback': {
+      get: {
+        tags: ['OAuth'],
+        summary: 'Google OAuth callback',
+        security: bearerAuth,
+        parameters: [
+          { name: 'code', in: 'query', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'Google account connected' },
+        },
+      },
+    },
+
+    '/api/oauth/outlook/authorize': {
+      get: {
+        tags: ['OAuth'],
+        summary: 'Get Microsoft authorization URL',
+        security: bearerAuth,
+        responses: {
+          '200': {
+            description: 'Authorization URL',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: {
+                      type: 'object',
+                      properties: { url: { type: 'string' } },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/api/oauth/outlook/callback': {
+      get: {
+        tags: ['OAuth'],
+        summary: 'Microsoft OAuth callback',
+        security: bearerAuth,
+        parameters: [
+          { name: 'code', in: 'query', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'Outlook account connected' },
+        },
+      },
+    },
+
+    '/api/oauth/{provider}/disconnect': {
+      delete: {
+        tags: ['OAuth'],
+        summary: 'Disconnect OAuth provider',
+        security: bearerAuth,
+        parameters: [providerParam],
+        responses: {
+          '200': {
+            description: 'Provider disconnected',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/api/oauth/status': {
+      get: {
+        tags: ['OAuth'],
+        summary: 'Get connection status for current user',
+        security: bearerAuth,
+        responses: {
+          '200': {
+            description: 'Connection status per provider',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { type: 'object' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    // ==================== Sync ====================
+    '/api/sync/{provider}/full': {
+      post: {
+        tags: ['Sync'],
+        summary: 'Full sync for a provider (ADMIN)',
+        security: bearerAuth,
+        parameters: [providerParam],
+        responses: {
+          '200': {
+            description: 'Sync completed',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        processed: { type: 'integer' },
+                        errors: { type: 'integer' },
+                      },
+                    },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/api/sync/{provider}/contact/{contactId}': {
+      post: {
+        tags: ['Sync'],
+        summary: 'Sync a single contact to a provider',
+        security: bearerAuth,
+        parameters: [
+          providerParam,
+          { name: 'contactId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          '200': {
+            description: 'Contact synced',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        success: { type: 'boolean' },
+                        externalId: { type: 'string' },
+                      },
+                    },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/api/sync/logs': {
+      get: {
+        tags: ['Sync'],
+        summary: 'List sync logs',
+        security: bearerAuth,
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 50 } },
+          { name: 'provider', in: 'query', schema: { type: 'string', enum: ['GOOGLE', 'OUTLOOK', 'NOTION'] } },
+        ],
+        responses: {
+          '200': {
+            description: 'List of sync logs',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { type: 'array', items: { $ref: '#/components/schemas/SyncLog' } },
+                    pagination: { $ref: '#/components/schemas/Pagination' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    // ==================== Webhooks ====================
+    '/api/webhooks/google': {
+      post: {
+        tags: ['Webhooks'],
+        summary: 'Google push notification handler',
+        description: 'No auth required - verified by Google headers',
+        responses: {
+          '200': { description: 'Notification acknowledged' },
+        },
+      },
+    },
+
+    '/api/webhooks/outlook': {
+      post: {
+        tags: ['Webhooks'],
+        summary: 'Microsoft change notification handler',
+        description: 'No auth required - verified by client state',
+        responses: {
+          '200': { description: 'Notification acknowledged' },
+          '202': { description: 'Notification accepted' },
         },
       },
     },

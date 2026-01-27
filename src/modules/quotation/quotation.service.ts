@@ -14,11 +14,17 @@ export async function findAll(page = 1, limit = 20, status?: string) {
       take: limit,
       where,
       include: {
-        client: {
+        contact: {
           select: {
             id: true,
-            companyName: true,
-            contactName: true,
+            displayName: true,
+            type: true,
+          },
+        },
+        contactPerson: {
+          select: {
+            id: true,
+            displayName: true,
           },
         },
         createdBy: {
@@ -51,7 +57,8 @@ export async function findById(id: string) {
   const quotation = await prisma.quotation.findUnique({
     where: { id },
     include: {
-      client: true,
+      contact: true,
+      contactPerson: true,
       createdBy: {
         select: {
           id: true,
@@ -88,13 +95,23 @@ export async function create(input: CreateQuotationInput, userId: string) {
     throw new AppError('Quotation number already exists', 409);
   }
 
-  // Check if client exists
-  const client = await prisma.client.findUnique({
-    where: { id: input.clientId },
+  // Check if contact exists
+  const contact = await prisma.contact.findUnique({
+    where: { id: input.contactId },
   });
 
-  if (!client) {
-    throw new AppError('Client not found', 404);
+  if (!contact) {
+    throw new AppError('Contact not found', 404);
+  }
+
+  // Check contact person if provided
+  if (input.contactPersonId) {
+    const person = await prisma.contact.findUnique({
+      where: { id: input.contactPersonId },
+    });
+    if (!person || person.type !== 'PERSON') {
+      throw new AppError('Contact person not found or is not a PERSON type', 400);
+    }
   }
 
   return prisma.quotation.create({
@@ -102,7 +119,8 @@ export async function create(input: CreateQuotationInput, userId: string) {
       quotationNumber: input.quotationNumber,
       projectName: input.projectName,
       quotationDate: new Date(input.quotationDate),
-      clientId: input.clientId,
+      contactId: input.contactId,
+      contactPersonId: input.contactPersonId || null,
       createdById: userId,
       originalTotal: new Decimal(input.originalTotal),
       discountedTotal: new Decimal(input.discountedTotal),
@@ -129,7 +147,8 @@ export async function create(input: CreateQuotationInput, userId: string) {
       },
     },
     include: {
-      client: true,
+      contact: true,
+      contactPerson: true,
       items: {
         orderBy: { itemNumber: 'asc' },
       },
@@ -177,7 +196,8 @@ export async function update(id: string, input: UpdateQuotationInput) {
       ...(input.quotationNumber && { quotationNumber: input.quotationNumber }),
       ...(input.projectName && { projectName: input.projectName }),
       ...(input.quotationDate && { quotationDate: new Date(input.quotationDate) }),
-      ...(input.clientId && { clientId: input.clientId }),
+      ...(input.contactId && { contactId: input.contactId }),
+      ...(input.contactPersonId !== undefined && { contactPersonId: input.contactPersonId || null }),
       ...(input.originalTotal !== undefined && { originalTotal: new Decimal(input.originalTotal) }),
       ...(input.discountedTotal !== undefined && { discountedTotal: new Decimal(input.discountedTotal) }),
       ...(input.taxIncluded !== undefined && { taxIncluded: input.taxIncluded }),
@@ -210,7 +230,8 @@ export async function update(id: string, input: UpdateQuotationInput) {
       }),
     },
     include: {
-      client: true,
+      contact: true,
+      contactPerson: true,
       items: {
         orderBy: { itemNumber: 'asc' },
       },

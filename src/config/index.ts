@@ -13,6 +13,22 @@ export const config = {
     url: process.env.DATABASE_URL,
   },
 
+  encryption: {
+    key: process.env.ENCRYPTION_KEY || 'default-encryption-key-change-me-32ch',
+  },
+
+  baseUrl: process.env.BASE_URL || 'http://localhost:3000',
+
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+  },
+
+  outlook: {
+    clientId: process.env.OUTLOOK_CLIENT_ID || '',
+    clientSecret: process.env.OUTLOOK_CLIENT_SECRET || '',
+  },
+
   company: {
     name: process.env.COMPANY_NAME || '抬頭工作室有限公司',
     taxId: process.env.COMPANY_TAX_ID || '83078329',

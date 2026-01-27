@@ -1,0 +1,69 @@
+import type { Request, Response } from 'express';
+import * as contactService from './contact.service.js';
+import { sendSuccess, sendPaginated } from '../../shared/utils/response.js';
+import type { CreateContactInput, UpdateContactInput } from './contact.schema.js';
+
+export async function findAll(req: Request, res: Response) {
+  const page = parseInt(String(req.query.page || '1'), 10);
+  const limit = parseInt(String(req.query.limit || '20'), 10);
+  const type = req.query.type as 'PERSON' | 'COMPANY' | undefined;
+  const tagId = req.query.tagId as string | undefined;
+
+  const { contacts, pagination } = await contactService.findAll(page, limit, type, tagId);
+  sendPaginated(res, contacts, pagination);
+}
+
+export async function findById(req: Request, res: Response) {
+  const id = req.params.id as string;
+  const contact = await contactService.findById(id);
+  sendSuccess(res, contact);
+}
+
+export async function create(req: Request, res: Response) {
+  const input = req.body as CreateContactInput;
+  const contact = await contactService.create(input);
+  sendSuccess(res, contact, 'Contact created successfully', 201);
+}
+
+export async function update(req: Request, res: Response) {
+  const id = req.params.id as string;
+  const input = req.body as UpdateContactInput;
+  const contact = await contactService.update(id, input);
+  sendSuccess(res, contact, 'Contact updated successfully');
+}
+
+export async function remove(req: Request, res: Response) {
+  const id = req.params.id as string;
+  await contactService.remove(id);
+  sendSuccess(res, null, 'Contact deleted successfully');
+}
+
+export async function search(req: Request, res: Response) {
+  const query = String(req.query.q || '');
+  if (!query) {
+    sendSuccess(res, []);
+    return;
+  }
+  const contacts = await contactService.search(query);
+  sendSuccess(res, contacts);
+}
+
+export async function addTags(req: Request, res: Response) {
+  const id = req.params.id as string;
+  const { tagIds } = req.body as { tagIds: string[] };
+  const contact = await contactService.addTags(id, tagIds);
+  sendSuccess(res, contact, 'Tags added successfully');
+}
+
+export async function removeTag(req: Request, res: Response) {
+  const id = req.params.id as string;
+  const tagId = req.params.tagId as string;
+  const contact = await contactService.removeTag(id, tagId);
+  sendSuccess(res, contact, 'Tag removed successfully');
+}
+
+export async function getMembers(req: Request, res: Response) {
+  const id = req.params.id as string;
+  const members = await contactService.getMembers(id);
+  sendSuccess(res, members);
+}
