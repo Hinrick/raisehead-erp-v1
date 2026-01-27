@@ -328,11 +328,10 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
       termsH = Math.max(65, termsH);
     }
 
-    // Check if everything below fits on this page
+    // Check if terms+pricing fits on this page (don't require bank section to fit too)
     const pricingH = 65;
-    const bankSigFooterH = 140;
-    const sectionH = Math.max(termsH, pricingH) + 20 + bankSigFooterH;
-    if (y + sectionH > fullH - 30) {
+    const termsAndPricingH = Math.max(hasTerms ? termsH : 0, pricingH);
+    if (y + termsAndPricingH > fullH - 30) {
       newPage();
     }
 
@@ -389,6 +388,12 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
 
     y += Math.max(hasTerms ? termsH : 0, pricingH) + 20;
 
+    // Check if bank+signatures+footer fits on this page
+    const bankSigFooterH = 130;
+    if (y + bankSigFooterH > fullH - 30) {
+      newPage();
+    }
+
     // ── BANK DETAILS + SIGNATURES ──────────────────
     doc.fontSize(11).font('TC-Bold').fillColor(C.text);
     doc.text('匯款資訊 Bank Details', ml, y, { lineBreak: false });
@@ -428,7 +433,7 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     if (stampExists) {
       const stW = 128;
       const stCx = sig2X + sigW / 2;
-      const stCy = bankStartY + 10;
+      const stCy = bankStartY + 55;
       doc.save();
       doc.translate(stCx, stCy);
       doc.rotate(-8);
