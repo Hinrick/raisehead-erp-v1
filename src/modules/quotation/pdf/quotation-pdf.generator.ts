@@ -345,12 +345,12 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     });
 
     const priceY1 = y + 24;
-    const taxLabel = quotation.taxIncluded ? '(含稅)' : '(未稅)';
+    const taxIncludedTotal = Math.round(Number(quotation.originalTotal) * 1.05);
     doc.fontSize(9.5).font('TC-Bold').fillColor(C.green);
-    doc.text(`專案優惠價 ${taxLabel}`, priceSectionX, priceY1, { lineBreak: false });
+    doc.text('原價總計(含稅)', priceSectionX, priceY1, { lineBreak: false });
 
     doc.fontSize(24).font('TC-Bold').fillColor(C.text);
-    doc.text(formatCurrency(Number(quotation.discountedTotal)), priceSectionX, priceY1 + 18, {
+    doc.text(formatCurrency(taxIncludedTotal), priceSectionX, priceY1 + 18, {
       width: priceSectionW, align: 'right', lineBreak: false,
     });
 
