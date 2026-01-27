@@ -38,6 +38,40 @@ type QuotationWithRelations = Quotation & {
   notes: QuotationNote[];
 };
 
+/** Split text into lines that fit within maxWidth. All rendering uses lineBreak:false. */
+function wrapText(doc: PDFKit.PDFDocument, text: string, maxWidth: number): string[] {
+  const lines: string[] = [];
+  let current = '';
+  for (const ch of text) {
+    const test = current + ch;
+    if (doc.widthOfString(test) > maxWidth && current.length > 0) {
+      lines.push(current);
+      current = ch;
+    } else {
+      current = test;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
+/** Render wrapped text lines at (x, y) with lineBreak:false. Returns total height used. */
+function drawWrappedText(
+  doc: PDFKit.PDFDocument, text: string, x: number, y: number,
+  maxWidth: number, lineH: number,
+): number {
+  const lines = wrapText(doc, text, maxWidth);
+  for (let i = 0; i < lines.length; i++) {
+    doc.text(lines[i], x, y + i * lineH, { lineBreak: false });
+  }
+  return lines.length * lineH;
+}
+
+/** Measure how tall wrapped text will be */
+function measureWrapped(doc: PDFKit.PDFDocument, text: string, maxWidth: number, lineH: number): number {
+  return wrapText(doc, text, maxWidth).length * lineH;
+}
+
 export async function generateQuotationPdf(quotation: QuotationWithRelations): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
@@ -45,6 +79,7 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     const doc = new PDFDocument({
       size: 'A4',
       margins: { top: 0, bottom: 0, left: 0, right: 0 },
+      autoFirstPage: false,
       info: {
         Title: `報價單 - ${quotation.quotationNumber}`,
         Author: config.company.name,
@@ -59,11 +94,21 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     doc.registerFont('TC', FONT_REGULAR);
     doc.registerFont('TC-Bold', FONT_BOLD);
 
-    const fullW = doc.page.width;
-    const fullH = doc.page.height;
+    // Add first page manually (prevents auto page-break issues)
+    doc.addPage({ size: 'A4', margins: { top: 0, bottom: 0, left: 0, right: 0 } });
+
+    const fullW = doc.page.width;   // 595.28
+    const fullH = doc.page.height;  // 841.89
     const ml = 50;
     const pw = fullW - ml * 2;
     let y = 0;
+
+    function newPage() {
+      doc.addPage({ size: 'A4', margins: { top: 0, bottom: 0, left: 0, right: 0 } });
+      doc.rect(0, 0, fullW, fullH).fill(C.pageBg);
+      drawGradientBar(doc, 0, 6, fullW);
+      y = 30;
+    }
 
     // ── PAGE BACKGROUND ────────────────────────────
     doc.rect(0, 0, fullW, fullH).fill(C.pageBg);
@@ -73,22 +118,17 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     y = 30;
 
     // ── COMPANY HEADER ─────────────────────────────
-    // Logo square
     const logoSize = 36;
     doc.roundedRect(ml, y, logoSize, logoSize, 8).fill(C.purple);
     doc.fontSize(22).font('TC-Bold').fillColor(C.white);
     const logoTextH = doc.heightOfString('抬', { width: logoSize });
     doc.text('抬', ml, y + (logoSize - logoTextH) / 2, { width: logoSize, align: 'center', lineBreak: false });
 
-    // Company name next to logo
     doc.fontSize(18).font('TC-Bold').fillColor(C.text);
     doc.text(config.company.name, ml + logoSize + 12, y + 6, { lineBreak: false });
 
-    // "QUOTATION" watermark on the right
     doc.fontSize(36).font('TC-Bold').fillColor(C.watermark);
-    doc.text('QUOTATION', ml + pw - 270, y - 6, {
-      width: 270, align: 'right', lineBreak: false,
-    });
+    doc.text('QUOTATION', ml + pw - 270, y - 6, { width: 270, align: 'right', lineBreak: false });
 
     y += logoSize + 8;
 
@@ -96,7 +136,6 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     doc.fontSize(8.5).font('TC').fillColor(C.textLight);
     doc.text(`統一編號：${config.company.taxId}`, ml, y, { lineBreak: false });
 
-    // Quotation number + date (right side)
     const riX = ml + pw - 170;
     doc.fontSize(8.5).font('TC').fillColor(C.textLight);
     doc.text('報價單號', riX, y, { lineBreak: false });
@@ -125,23 +164,20 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     doc.moveTo(ml, y).lineTo(ml + pw, y).lineWidth(0.5).strokeColor(C.borderDark).stroke();
     y += 20;
 
-    // ── CLIENT INFO + PROJECT DETAILS (2 columns) ──
+    // ── CLIENT INFO + PROJECT DETAILS ──────────────
     const halfW = pw * 0.48;
     const rightX = ml + pw - halfW;
 
-    // Section headers
     doc.fontSize(9).font('TC-Bold').fillColor(C.indigo);
     doc.text('客戶資料 CLIENT INFO', ml, y, { lineBreak: false });
     doc.text('專案內容 PROJECT DETAILS', rightX, y, { lineBreak: false });
     y += 20;
 
-    // Client company name
     const clientStartY = y;
     doc.fontSize(14).font('TC-Bold').fillColor(C.text);
     doc.text(quotation.client.companyName, ml, y, { lineBreak: false });
     y += 24;
 
-    // Client details
     const clblW = 55;
     const clientFields: [string, string][] = [
       ['統一編號', quotation.client.taxId || '-'],
@@ -157,15 +193,20 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
       y += 16;
     }
 
-    // Project card (right column, aligned with client start)
-    const cardH = 65;
+    // Project card
+    const projW = halfW - 30;
+    doc.fontSize(14).font('TC-Bold');
+    const projLines = wrapText(doc, quotation.projectName, projW);
+    const projTextH = projLines.length * 20;
+    const cardH = Math.max(65, 30 + projTextH + 12);
+
     doc.roundedRect(rightX, clientStartY, halfW, cardH, 6).fill(C.cardBg);
     doc.fontSize(8.5).font('TC').fillColor(C.textLight);
     doc.text('專案名稱', rightX + 15, clientStartY + 12, { lineBreak: false });
     doc.fontSize(14).font('TC-Bold').fillColor(C.text);
-    doc.text(quotation.projectName, rightX + 15, clientStartY + 30, {
-      width: halfW - 30, lineBreak: false,
-    });
+    for (let i = 0; i < projLines.length; i++) {
+      doc.text(projLines[i], rightX + 15, clientStartY + 30 + i * 20, { lineBreak: false });
+    }
 
     y += 10;
 
@@ -177,14 +218,15 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     const numW = 40;
     const amtW = 80;
     const descW = pw - numW - amtW;
+    const descTextW = descW - 10;
+    const descLineH = 14;
+    const detLineH = 12;
 
     // Header
     doc.fontSize(8.5).font('TC-Bold').fillColor(C.textLight);
-    doc.text('#', ml + 5, y, { width: numW - 10, lineBreak: false });
+    doc.text('#', ml + 5, y, { lineBreak: false });
     doc.text('項目內容 (DESCRIPTION)', ml + numW, y, { lineBreak: false });
-    doc.text('金額 (NT$)', ml + numW + descW, y, {
-      width: amtW, align: 'right', lineBreak: false,
-    });
+    doc.text('金額 (NT$)', ml + numW + descW, y, { width: amtW, align: 'right', lineBreak: false });
     y += 14;
     doc.moveTo(ml, y).lineTo(ml + pw, y).lineWidth(0.5).strokeColor(C.borderDark).stroke();
     y += 5;
@@ -193,21 +235,23 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     for (let i = 0; i < quotation.items.length; i++) {
       const item = quotation.items[i];
 
-      // Measure row height
+      // Measure row height using manual wrapping
       doc.fontSize(10).font('TC-Bold');
-      const descH = doc.heightOfString(item.description, { width: descW - 10 });
+      const descLines = wrapText(doc, item.description, descTextW);
+      const descH = descLines.length * descLineH;
+
+      let detLines: string[] = [];
       let detH = 0;
       if (item.details) {
         doc.fontSize(8.5).font('TC');
-        detH = doc.heightOfString(item.details, { width: descW - 10 }) + 3;
+        detLines = wrapText(doc, item.details, descTextW);
+        detH = detLines.length * detLineH + 3;
       }
       const rowH = Math.max(38, descH + detH + 18);
 
-      // Page break check
-      if (y + rowH > fullH - 220) {
-        doc.addPage();
-        doc.rect(0, 0, fullW, fullH).fill(C.pageBg);
-        y = 30;
+      // Page break check for items
+      if (y + rowH > fullH - 100) {
+        newPage();
       }
 
       // Alternating row bg
@@ -215,21 +259,23 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
         doc.roundedRect(ml - 8, y, pw + 16, rowH, 4).fill(C.purpleLight);
       }
 
-      // Number (zero-padded, faint)
+      // Number
       doc.fontSize(11).font('TC').fillColor(C.textFaint);
-      doc.text(String(item.itemNumber).padStart(2, '0'), ml + 5, y + 10, {
-        width: numW - 10, lineBreak: false,
-      });
+      doc.text(String(item.itemNumber).padStart(2, '0'), ml + 5, y + 10, { lineBreak: false });
 
-      // Description
+      // Description (manual wrapping)
       doc.fontSize(10).font('TC-Bold').fillColor(C.text);
-      doc.text(item.description, ml + numW, y + 8, { width: descW - 10 });
+      for (let j = 0; j < descLines.length; j++) {
+        doc.text(descLines[j], ml + numW, y + 8 + j * descLineH, { lineBreak: false });
+      }
 
-      // Details
-      if (item.details) {
-        const detY = y + 8 + descH + 2;
+      // Details (manual wrapping)
+      if (item.details && detLines.length > 0) {
+        const detY = y + 8 + descH + 3;
         doc.fontSize(8.5).font('TC').fillColor(C.textLight);
-        doc.text(item.details, ml + numW, detY, { width: descW - 10 });
+        for (let j = 0; j < detLines.length; j++) {
+          doc.text(detLines[j], ml + numW, detY + j * detLineH, { lineBreak: false });
+        }
       }
 
       // Amount
@@ -240,7 +286,6 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
 
       y += rowH;
 
-      // Divider between items
       if (i < quotation.items.length - 1) {
         doc.moveTo(ml, y).lineTo(ml + pw, y).lineWidth(0.3).strokeColor(C.border).stroke();
       }
@@ -252,44 +297,43 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     // ── TERMS + PRICING (side by side) ─────────────
     const termsBoxW = pw * 0.44;
     const bulletW = termsBoxW - 30;
+    const bulletLineH = 13;
     const priceSectionX = ml + pw * 0.50;
     const priceSectionW = pw * 0.50;
 
-    // Pre-measure terms box height with actual text wrapping
     const ptLines = quotation.paymentTerms.map(pt => pt.content);
     const noteLines = quotation.notes.map(n => n.content);
     const hasPT = ptLines.length > 0;
     const hasNotes = noteLines.length > 0;
     const hasTerms = hasPT || hasNotes;
 
+    // Pre-measure terms box height
     let termsH = 0;
-    const ptHeights: number[] = [];
-    const noteHeights: number[] = [];
+    const ptWrapped: string[][] = [];
+    const noteWrapped: string[][] = [];
 
     if (hasTerms) {
       doc.fontSize(8.5).font('TC');
       for (const line of ptLines) {
-        const h = doc.heightOfString('•   ' + line, { width: bulletW });
-        ptHeights.push(h);
-        termsH += h + 4;
+        const wrapped = wrapText(doc, '•   ' + line, bulletW);
+        ptWrapped.push(wrapped);
+        termsH += wrapped.length * bulletLineH + 6;
       }
       for (const line of noteLines) {
-        const h = doc.heightOfString('•   ' + line, { width: bulletW });
-        noteHeights.push(h);
-        termsH += h + 4;
+        const wrapped = wrapText(doc, '•   ' + line, bulletW);
+        noteWrapped.push(wrapped);
+        termsH += wrapped.length * bulletLineH + 6;
       }
-      termsH += 16 + (hasPT ? 20 : 0) + (hasNotes ? 20 : 0); // padding + headers
+      termsH += 16 + (hasPT ? 22 : 0) + (hasNotes ? 22 : 0);
       termsH = Math.max(65, termsH);
     }
 
-    // Check if terms + pricing + bank + signatures + footer fit on this page
+    // Check if everything below fits on this page
     const pricingH = 65;
-    const bankSigFooterH = 130;
-    const sectionH = Math.max(termsH, pricingH) + 10 + bankSigFooterH;
+    const bankSigFooterH = 140;
+    const sectionH = Math.max(termsH, pricingH) + 20 + bankSigFooterH;
     if (y + sectionH > fullH - 30) {
-      doc.addPage();
-      doc.rect(0, 0, fullW, fullH).fill(C.pageBg);
-      y = 30;
+      newPage();
     }
 
     // Pricing (right side)
@@ -310,7 +354,7 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
       width: priceSectionW, align: 'right', lineBreak: false,
     });
 
-    // Terms box (left side) — payment terms + notes
+    // Terms box (left side)
     if (hasTerms) {
       doc.roundedRect(ml, y - 2, termsBoxW, termsH, 8).fill(C.termsBg);
 
@@ -319,22 +363,26 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
       if (hasPT) {
         doc.fontSize(9.5).font('TC-Bold').fillColor(C.indigo);
         doc.text('付款條件 Payment Terms', ml + 15, ny, { lineBreak: false });
-        ny += 20;
+        ny += 22;
         doc.fontSize(8.5).font('TC').fillColor(C.indigo);
-        for (let i = 0; i < ptLines.length; i++) {
-          doc.text('•   ' + ptLines[i], ml + 15, ny, { width: bulletW });
-          ny += ptHeights[i] + 4;
+        for (const lines of ptWrapped) {
+          for (let j = 0; j < lines.length; j++) {
+            doc.text(lines[j], ml + 15, ny + j * bulletLineH, { lineBreak: false });
+          }
+          ny += lines.length * bulletLineH + 6;
         }
       }
 
       if (hasNotes) {
         doc.fontSize(9.5).font('TC-Bold').fillColor(C.indigo);
         doc.text('備註 Notes', ml + 15, ny, { lineBreak: false });
-        ny += 20;
+        ny += 22;
         doc.fontSize(8.5).font('TC').fillColor(C.indigo);
-        for (let i = 0; i < noteLines.length; i++) {
-          doc.text('•   ' + noteLines[i], ml + 15, ny, { width: bulletW });
-          ny += noteHeights[i] + 4;
+        for (const lines of noteWrapped) {
+          for (let j = 0; j < lines.length; j++) {
+            doc.text(lines[j], ml + 15, ny + j * bulletLineH, { lineBreak: false });
+          }
+          ny += lines.length * bulletLineH + 6;
         }
       }
     }
@@ -346,12 +394,10 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     doc.text('匯款資訊 Bank Details', ml, y, { lineBreak: false });
     y += 20;
 
-    // Parse bank info
     const bankMatch = config.company.bank.match(/^(.+?)[\(（](.+?)[\)）]$/);
     const bankName = bankMatch ? bankMatch[1] : config.company.bank;
     const bankBranch = bankMatch ? bankMatch[2] : '';
 
-    // Bank info (left)
     const bLblW = 55;
     const bankStartY = y;
     const bankFields: [string, string][] = [
@@ -374,11 +420,10 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     const sig1X = sigBaseX;
     const sig2X = sigBaseX + sigW + 30;
 
-    // Divider above signatures
     doc.moveTo(sigBaseX, bankStartY + 50).lineTo(sigBaseX + priceSectionW, bankStartY + 50)
        .lineWidth(0.5).strokeColor(C.borderDark).stroke();
 
-    // Stamp on provider side (rotated slightly for natural look)
+    // Stamp
     const stampExists = fs.existsSync(STAMP_PATH);
     if (stampExists) {
       const stW = 128;
@@ -393,18 +438,10 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
 
     // Signature labels
     doc.fontSize(8).font('TC').fillColor(C.textLight);
-    doc.text('甲方簽章 Client', sig1X, bankStartY + 56, {
-      width: sigW, align: 'center', lineBreak: false,
-    });
-    doc.text('Signature', sig1X, bankStartY + 68, {
-      width: sigW, align: 'center', lineBreak: false,
-    });
-    doc.text('乙方簽章 Provider', sig2X, bankStartY + 56, {
-      width: sigW, align: 'center', lineBreak: false,
-    });
-    doc.text('Signature', sig2X, bankStartY + 68, {
-      width: sigW, align: 'center', lineBreak: false,
-    });
+    doc.text('甲方簽章 Client', sig1X, bankStartY + 56, { width: sigW, align: 'center', lineBreak: false });
+    doc.text('Signature', sig1X, bankStartY + 68, { width: sigW, align: 'center', lineBreak: false });
+    doc.text('乙方簽章 Provider', sig2X, bankStartY + 56, { width: sigW, align: 'center', lineBreak: false });
+    doc.text('Signature', sig2X, bankStartY + 68, { width: sigW, align: 'center', lineBreak: false });
 
     y = Math.max(y, bankStartY + 85);
 
