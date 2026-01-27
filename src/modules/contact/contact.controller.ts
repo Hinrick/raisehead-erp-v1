@@ -1,3 +1,4 @@
+import path from 'path';
 import type { Request, Response } from 'express';
 import * as contactService from './contact.service.js';
 import { sendSuccess, sendPaginated } from '../../shared/utils/response.js';
@@ -66,4 +67,32 @@ export async function getMembers(req: Request, res: Response) {
   const id = req.params.id as string;
   const members = await contactService.getMembers(id);
   sendSuccess(res, members);
+}
+
+export async function uploadNameCard(req: Request, res: Response) {
+  const id = req.params.id as string;
+  if (!req.file) {
+    res.status(400).json({ success: false, error: 'No file uploaded' });
+    return;
+  }
+  const relativePath = `uploads/namecards/${req.file.filename}`;
+  const contact = await contactService.updateNameCard(id, relativePath);
+  sendSuccess(res, contact, 'Name card uploaded successfully');
+}
+
+export async function serveNameCard(req: Request, res: Response) {
+  const id = req.params.id as string;
+  const contact = await contactService.findById(id);
+  if (!contact.nameCardPath) {
+    res.status(404).json({ success: false, error: 'No name card image found' });
+    return;
+  }
+  const absolute = path.resolve(contact.nameCardPath);
+  res.sendFile(absolute);
+}
+
+export async function deleteNameCard(req: Request, res: Response) {
+  const id = req.params.id as string;
+  await contactService.removeNameCard(id);
+  sendSuccess(res, null, 'Name card deleted successfully');
 }

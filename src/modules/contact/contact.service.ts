@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { prisma } from '../../config/database.js';
 import { AppError } from '../../shared/middleware/error-handler.js';
 import type { CreateContactInput, UpdateContactInput } from './contact.schema.js';
@@ -227,5 +229,41 @@ export async function getMembers(companyId: string) {
       tags: { include: { tag: true } },
     },
     orderBy: { displayName: 'asc' },
+  });
+}
+
+export async function updateNameCard(contactId: string, relativePath: string) {
+  const contact = await prisma.contact.findUnique({ where: { id: contactId } });
+  if (!contact) {
+    throw new AppError('Contact not found', 404);
+  }
+
+  // Delete old file if exists
+  if (contact.nameCardPath) {
+    const oldAbsolute = path.resolve(contact.nameCardPath);
+    fs.unlink(oldAbsolute, () => {});
+  }
+
+  return prisma.contact.update({
+    where: { id: contactId },
+    data: { nameCardPath: relativePath },
+  });
+}
+
+export async function removeNameCard(contactId: string) {
+  const contact = await prisma.contact.findUnique({ where: { id: contactId } });
+  if (!contact) {
+    throw new AppError('Contact not found', 404);
+  }
+  if (!contact.nameCardPath) {
+    throw new AppError('No name card image found', 404);
+  }
+
+  const absolute = path.resolve(contact.nameCardPath);
+  fs.unlink(absolute, () => {});
+
+  return prisma.contact.update({
+    where: { id: contactId },
+    data: { nameCardPath: null },
   });
 }

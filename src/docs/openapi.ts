@@ -55,6 +55,7 @@ const ContactSchema = {
     lastName: { type: 'string', nullable: true },
     jobTitle: { type: 'string', nullable: true },
     companyId: { type: 'string', format: 'uuid', nullable: true },
+    nameCardPath: { type: 'string', nullable: true, description: 'Relative path to name card image' },
     createdAt: { type: 'string', format: 'date-time' },
     updatedAt: { type: 'string', format: 'date-time' },
   },
@@ -648,6 +649,100 @@ export const openApiDocument = {
           },
           '400': {
             description: 'Contact is not a company',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+    },
+
+    '/api/contacts/{id}/namecard': {
+      post: {
+        tags: ['Contacts'],
+        summary: 'Upload a name card image',
+        description: 'Upload a photo of a business card (JPEG, PNG, or WebP, max 5 MB)',
+        security: bearerAuth,
+        parameters: [idParam],
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['namecard'],
+                properties: {
+                  namecard: { type: 'string', format: 'binary', description: 'Name card image file' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Name card uploaded',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/Contact' },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          '400': {
+            description: 'No file uploaded or invalid file type',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '404': {
+            description: 'Contact not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+      get: {
+        tags: ['Contacts'],
+        summary: 'Get name card image',
+        description: 'Serves the name card image file for a contact',
+        security: bearerAuth,
+        parameters: [idParam],
+        responses: {
+          '200': {
+            description: 'Name card image file',
+            content: {
+              'image/*': { schema: { type: 'string', format: 'binary' } },
+            },
+          },
+          '404': {
+            description: 'No name card image found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+      delete: {
+        tags: ['Contacts'],
+        summary: 'Delete name card image',
+        security: bearerAuth,
+        parameters: [idParam],
+        responses: {
+          '200': {
+            description: 'Name card deleted',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'Contact or name card not found',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
         },

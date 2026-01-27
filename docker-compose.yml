@@ -43,9 +43,12 @@ services:
       COMPANY_ADDRESS: ${COMPANY_ADDRESS:-高雄市左營區}
       COMPANY_EMAIL: ${COMPANY_EMAIL:-contact@raisehead.studio}
       COMPANY_PHONE: ${COMPANY_PHONE:-}
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
       db:
         condition: service_healthy
 
 volumes:
   postgres_data:
+  uploads_data:

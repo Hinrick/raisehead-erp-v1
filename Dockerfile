@@ -26,5 +26,6 @@ COPY package.json pnpm-lock.yaml .npmrc ./
 COPY prisma ./prisma
 COPY assets ./assets
 RUN pnpm db:generate
+RUN mkdir -p /app/uploads/namecards
 EXPOSE 3000
 CMD ["node", "dist/server.js"]
