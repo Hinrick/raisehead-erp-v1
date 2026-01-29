@@ -2,7 +2,7 @@ import { Client as NotionClient } from '@notionhq/client';
 import type { Contact } from '@prisma/client';
 import { prisma } from '../../../../config/database.js';
 
-async function getNotionClient(): Promise<NotionClient> {
+async function getNotionConfig(): Promise<{ apiKey: string }> {
   const integrationConfig = await prisma.integrationConfig.findUnique({
     where: { provider: 'NOTION' },
   });
@@ -17,7 +17,12 @@ async function getNotionClient(): Promise<NotionClient> {
     throw new Error('Notion API key not configured');
   }
 
-  return new NotionClient({ auth: notionConfig.apiKey });
+  return { apiKey: notionConfig.apiKey };
+}
+
+async function getNotionClient(): Promise<NotionClient> {
+  const { apiKey } = await getNotionConfig();
+  return new NotionClient({ auth: apiKey });
 }
 
 export async function pushContact(
@@ -107,7 +112,7 @@ export async function deleteContact(externalId: string): Promise<void> {
 export async function fetchAllContacts(databaseId: string): Promise<
   Array<{ externalId: string; data: Record<string, unknown>; lastModified: Date | null }>
 > {
-  const notion = await getNotionClient();
+  const { apiKey } = await getNotionConfig();
   const results: Array<{ externalId: string; data: Record<string, unknown>; lastModified: Date | null }> = [];
 
   let cursor: string | undefined;
@@ -116,12 +121,25 @@ export async function fetchAllContacts(databaseId: string): Promise<
     const body: Record<string, unknown> = { page_size: 100 };
     if (cursor) body.start_cursor = cursor;
 
-    const response: any = await notion.request({
-      path: `databases/${databaseId}/query`,
-      method: 'post',
-      body,
-      headers: { 'Notion-Version': '2022-06-28' },
+    // Use native fetch with older Notion API version because the SDK v5.8.0
+    // always overwrites the Notion-Version header with 2025-09-03, which
+    // removed the databases/{id}/query endpoint.
+    const res = await fetch(`https://api.notion.com/v1/databases/${databaseId}/query`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Notion-Version': '2022-06-28',
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
     });
+
+    if (!res.ok) {
+      const errorBody = await res.text();
+      throw new Error(`Notion API error ${res.status}: ${errorBody}`);
+    }
+
+    const response: any = await res.json();
 
     for (const page of response.results) {
       const p = page as any;
@@ -141,8 +159,8 @@ export async function fetchAllContacts(databaseId: string): Promise<
         externalId: p.id,
         data: {
           displayName: getName(props.Name),
-          email: props.Email?.email || null,
-          phone: props.Phone?.phone_number || null,
+          email: props.Email?.email ?? null,
+          phone: props.Phone?.phone_number ?? null,
           address: getRichText(props.Address),
           jobTitle: getRichText(props['Job Title']),
           taxId: getRichText(props['Tax ID']),
