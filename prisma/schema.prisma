@@ -71,10 +71,17 @@ model Contact {
   displayName String
   firstName   String?
   lastName    String?
+  middleName  String?
+  namePrefix  String?
+  nameSuffix  String?
+  nickname    String?
   email       String?
   phone       String?
   address     String?
   notes       String? @db.Text
+  birthday    DateTime?
+  gender      String?
+  taxId       String?
 
   // Name card image
   nameCardPath String?
@@ -83,20 +90,57 @@ model Contact {
   updatedAt DateTime @updatedAt
 
   // Relations
+  emails           ContactEmail[]
+  phones           ContactPhone[]
+  addresses        ContactAddress[]
   companies        ContactCompany[]
   tags             ContactTag[]
   externalLinks    ExternalContactLink[]
   personQuotations Quotation[]           @relation("ContactPersonQuotations")
 }
 
-model ContactCompany {
-  id        String   @id @default(uuid())
+model ContactEmail {
+  id        String  @id @default(uuid())
   contactId String
-  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
-  companyId String
-  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  jobTitle  String?
-  createdAt DateTime @default(now())
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  value     String
+  label     String  @default("work")
+  primary   Boolean @default(false)
+}
+
+model ContactPhone {
+  id        String  @id @default(uuid())
+  contactId String
+  contact   Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  value     String
+  label     String  @default("work")
+  primary   Boolean @default(false)
+}
+
+model ContactAddress {
+  id             String  @id @default(uuid())
+  contactId      String
+  contact        Contact @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  label          String  @default("work")
+  primary        Boolean @default(false)
+  formattedValue String?
+  street         String?
+  city           String?
+  state          String?
+  postalCode     String?
+  country        String?
+  countryCode    String?
+}
+
+model ContactCompany {
+  id         String   @id @default(uuid())
+  contactId  String
+  contact    Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  companyId  String
+  company    Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  jobTitle   String?
+  department String?
+  createdAt  DateTime @default(now())
 
   @@unique([contactId, companyId])
 }

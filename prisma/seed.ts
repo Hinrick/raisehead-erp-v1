@@ -117,16 +117,16 @@ async function main() {
 
   // ── Contacts ───────────────────────────────────────
   const contactData = [
-    { id: 'contact-01', displayName: '王小明', firstName: '小明', lastName: '王', email: 'wang.xiaoming@dingxin.com.tw', phone: '0912-345-678' },
-    { id: 'contact-02', displayName: '陳美華', firstName: '美華', lastName: '陳', email: 'chen.meihua@umc.com', phone: '0923-456-789' },
-    { id: 'contact-03', displayName: '林志強', firstName: '志強', lastName: '林', email: 'lin.zhiqiang@greentech.tw', phone: '0934-567-890' },
-    { id: 'contact-04', displayName: '張雅婷', firstName: '雅婷', lastName: '張', email: 'chang.yating@largan.com', phone: '0945-678-901', address: '台中市南屯區大墩路100號' },
-    { id: 'contact-05', displayName: '李國豪', firstName: '國豪', lastName: '李', email: 'lee.guohao@eslite.com', phone: '0956-789-012' },
-    { id: 'contact-06', displayName: '黃麗珍', firstName: '麗珍', lastName: '黃', email: 'huang.lizhen@clouddigital.tw', phone: '0967-890-123' },
-    { id: 'contact-07', displayName: '劉建志', firstName: '建志', lastName: '劉', email: 'liu.jianzhi@tdri.org.tw', phone: '0978-901-234', notes: '主要負責國際合作案' },
-    { id: 'contact-08', displayName: '吳佳蓉', firstName: '佳蓉', lastName: '吳', email: 'wu.jiarong@oceanbio.com.tw', phone: '0989-012-345' },
-    { id: 'contact-09', displayName: '周家偉', firstName: '家偉', lastName: '周', email: 'zhou.jiawei@smartbuild.tw', phone: '0910-123-456' },
-    { id: 'contact-10', displayName: '蔡宜芳', firstName: '宜芳', lastName: '蔡', email: 'tsai.yifang@stylefood.tw', phone: '0921-234-567' },
+    { id: 'contact-01', displayName: '王小明', firstName: '小明', lastName: '王', email: 'wang.xiaoming@dingxin.com.tw', phone: '0912-345-678', nickname: '阿明', gender: 'male', birthday: new Date('1985-03-15'), taxId: 'A123456789' },
+    { id: 'contact-02', displayName: '陳美華', firstName: '美華', lastName: '陳', middleName: '玉', email: 'chen.meihua@umc.com', phone: '0923-456-789', namePrefix: '博士', gender: 'female', birthday: new Date('1978-07-22') },
+    { id: 'contact-03', displayName: '林志強', firstName: '志強', lastName: '林', email: 'lin.zhiqiang@greentech.tw', phone: '0934-567-890', nickname: '強哥', gender: 'male' },
+    { id: 'contact-04', displayName: '張雅婷', firstName: '雅婷', lastName: '張', email: 'chang.yating@largan.com', phone: '0945-678-901', address: '台中市南屯區大墩路100號', gender: 'female', birthday: new Date('1990-11-08'), taxId: 'D456789012' },
+    { id: 'contact-05', displayName: '李國豪', firstName: '國豪', lastName: '李', email: 'lee.guohao@eslite.com', phone: '0956-789-012', nameSuffix: 'Jr.', gender: 'male' },
+    { id: 'contact-06', displayName: '黃麗珍', firstName: '麗珍', lastName: '黃', email: 'huang.lizhen@clouddigital.tw', phone: '0967-890-123', nickname: 'Lily', gender: 'female', birthday: new Date('1992-04-30') },
+    { id: 'contact-07', displayName: '劉建志', firstName: '建志', lastName: '劉', email: 'liu.jianzhi@tdri.org.tw', phone: '0978-901-234', notes: '主要負責國際合作案', namePrefix: '教授', gender: 'male' },
+    { id: 'contact-08', displayName: '吳佳蓉', firstName: '佳蓉', lastName: '吳', email: 'wu.jiarong@oceanbio.com.tw', phone: '0989-012-345', gender: 'female', birthday: new Date('1988-09-12') },
+    { id: 'contact-09', displayName: '周家偉', firstName: '家偉', lastName: '周', email: 'zhou.jiawei@smartbuild.tw', phone: '0910-123-456', gender: 'male', taxId: 'F789012345' },
+    { id: 'contact-10', displayName: '蔡宜芳', firstName: '宜芳', lastName: '蔡', email: 'tsai.yifang@stylefood.tw', phone: '0921-234-567', nickname: 'Fanny', gender: 'female', birthday: new Date('1995-01-25') },
   ];
 
   for (const c of contactData) {
@@ -139,21 +139,100 @@ async function main() {
 
   console.log(`Created ${contactData.length} contacts`);
 
+  // ── Contact Emails (multi-value) ─────────────────────
+  const contactEmailData = [
+    // contact-01: 2 emails
+    { contactId: 'contact-01', value: 'wang.xiaoming@dingxin.com.tw', label: 'work', primary: true },
+    { contactId: 'contact-01', value: 'xiaoming.wang@gmail.com', label: 'home', primary: false },
+    // contact-02: 2 emails
+    { contactId: 'contact-02', value: 'chen.meihua@umc.com', label: 'work', primary: true },
+    { contactId: 'contact-02', value: 'meihua.chen@outlook.com', label: 'home', primary: false },
+    // contact-03: 1 email
+    { contactId: 'contact-03', value: 'lin.zhiqiang@greentech.tw', label: 'work', primary: true },
+    // contact-04: 3 emails
+    { contactId: 'contact-04', value: 'chang.yating@largan.com', label: 'work', primary: true },
+    { contactId: 'contact-04', value: 'yating.chang@gmail.com', label: 'home', primary: false },
+    { contactId: 'contact-04', value: 'yating@freelance.tw', label: 'other', primary: false },
+    // contact-05 through 10: 1 email each
+    { contactId: 'contact-05', value: 'lee.guohao@eslite.com', label: 'work', primary: true },
+    { contactId: 'contact-06', value: 'huang.lizhen@clouddigital.tw', label: 'work', primary: true },
+    { contactId: 'contact-06', value: 'lily.huang@yahoo.com.tw', label: 'home', primary: false },
+    { contactId: 'contact-07', value: 'liu.jianzhi@tdri.org.tw', label: 'work', primary: true },
+    { contactId: 'contact-08', value: 'wu.jiarong@oceanbio.com.tw', label: 'work', primary: true },
+    { contactId: 'contact-09', value: 'zhou.jiawei@smartbuild.tw', label: 'work', primary: true },
+    { contactId: 'contact-10', value: 'tsai.yifang@stylefood.tw', label: 'work', primary: true },
+    { contactId: 'contact-10', value: 'fanny.tsai@hotmail.com', label: 'home', primary: false },
+  ];
+
+  // Clear existing and re-create to allow re-running seed
+  await prisma.contactEmail.deleteMany({ where: { contactId: { in: contactData.map((c) => c.id) } } });
+  await prisma.contactEmail.createMany({ data: contactEmailData });
+  console.log(`Created ${contactEmailData.length} contact emails`);
+
+  // ── Contact Phones (multi-value) ─────────────────────
+  const contactPhoneData = [
+    // contact-01: work + mobile
+    { contactId: 'contact-01', value: '0912-345-678', label: 'mobile', primary: true },
+    { contactId: 'contact-01', value: '02-2720-1234 ext.101', label: 'work', primary: false },
+    // contact-02: mobile + work + fax
+    { contactId: 'contact-02', value: '0923-456-789', label: 'mobile', primary: true },
+    { contactId: 'contact-02', value: '03-578-0011 ext.200', label: 'work', primary: false },
+    { contactId: 'contact-02', value: '03-578-0012', label: 'fax', primary: false },
+    // contact-03
+    { contactId: 'contact-03', value: '0934-567-890', label: 'mobile', primary: true },
+    // contact-04: mobile + home
+    { contactId: 'contact-04', value: '0945-678-901', label: 'mobile', primary: true },
+    { contactId: 'contact-04', value: '04-2359-1234', label: 'home', primary: false },
+    // contact-05 through 10
+    { contactId: 'contact-05', value: '0956-789-012', label: 'mobile', primary: true },
+    { contactId: 'contact-06', value: '0967-890-123', label: 'mobile', primary: true },
+    { contactId: 'contact-06', value: '02-8791-3456 ext.55', label: 'work', primary: false },
+    { contactId: 'contact-07', value: '0978-901-234', label: 'mobile', primary: true },
+    { contactId: 'contact-08', value: '0989-012-345', label: 'mobile', primary: true },
+    { contactId: 'contact-09', value: '0910-123-456', label: 'mobile', primary: true },
+    { contactId: 'contact-09', value: '02-2700-5678', label: 'work', primary: false },
+    { contactId: 'contact-10', value: '0921-234-567', label: 'mobile', primary: true },
+  ];
+
+  await prisma.contactPhone.deleteMany({ where: { contactId: { in: contactData.map((c) => c.id) } } });
+  await prisma.contactPhone.createMany({ data: contactPhoneData });
+  console.log(`Created ${contactPhoneData.length} contact phones`);
+
+  // ── Contact Addresses (multi-value, structured) ──────
+  const contactAddressData = [
+    // contact-01: work address
+    { contactId: 'contact-01', label: 'work', primary: true, formattedValue: '台北市信義區信義路五段7號 12F', street: '信義路五段7號 12F', city: '台北市', state: '信義區', postalCode: '110', country: '台灣', countryCode: 'TW' },
+    // contact-02: work + home
+    { contactId: 'contact-02', label: 'work', primary: true, formattedValue: '新竹市新竹科學園區力行二路3號', street: '力行二路3號', city: '新竹市', state: '新竹科學園區', postalCode: '300', country: '台灣', countryCode: 'TW' },
+    { contactId: 'contact-02', label: 'home', primary: false, formattedValue: '新竹市東區光復路二段101號', street: '光復路二段101號', city: '新竹市', state: '東區', postalCode: '300', country: '台灣', countryCode: 'TW' },
+    // contact-04: work + home
+    { contactId: 'contact-04', label: 'work', primary: true, formattedValue: '台中市南屯區精科路25號', street: '精科路25號', city: '台中市', state: '南屯區', postalCode: '408', country: '台灣', countryCode: 'TW' },
+    { contactId: 'contact-04', label: 'home', primary: false, formattedValue: '台中市南屯區大墩路100號', street: '大墩路100號', city: '台中市', state: '南屯區', postalCode: '408', country: '台灣', countryCode: 'TW' },
+    // contact-07: work
+    { contactId: 'contact-07', label: 'work', primary: true, formattedValue: '台北市松山區光復南路133號', street: '光復南路133號', city: '台北市', state: '松山區', postalCode: '105', country: '台灣', countryCode: 'TW' },
+    // contact-09: work
+    { contactId: 'contact-09', label: 'work', primary: true, formattedValue: '台北市大安區復興南路一段390號', street: '復興南路一段390號', city: '台北市', state: '大安區', postalCode: '106', country: '台灣', countryCode: 'TW' },
+  ];
+
+  await prisma.contactAddress.deleteMany({ where: { contactId: { in: contactData.map((c) => c.id) } } });
+  await prisma.contactAddress.createMany({ data: contactAddressData });
+  console.log(`Created ${contactAddressData.length} contact addresses`);
+
   // ── ContactCompany junctions ───────────────────────
   const junctionData = [
-    { contactId: 'contact-01', companyId: 'company-01', jobTitle: '專案經理' },
-    { contactId: 'contact-02', companyId: 'company-02', jobTitle: '業務副總' },
-    { contactId: 'contact-03', companyId: 'company-03', jobTitle: '技術總監' },
-    { contactId: 'contact-04', companyId: 'company-04', jobTitle: '採購主管' },
-    { contactId: 'contact-05', companyId: 'company-05', jobTitle: '企劃經理' },
-    { contactId: 'contact-06', companyId: 'company-06', jobTitle: '資深工程師' },
-    { contactId: 'contact-07', companyId: 'company-07', jobTitle: '研究員' },
-    { contactId: 'contact-08', companyId: 'company-08', jobTitle: '行銷總監' },
-    { contactId: 'contact-09', companyId: 'company-09', jobTitle: '工地主任' },
-    { contactId: 'contact-10', companyId: 'company-10', jobTitle: '營運長' },
+    { contactId: 'contact-01', companyId: 'company-01', jobTitle: '專案經理', department: '產品研發部' },
+    { contactId: 'contact-02', companyId: 'company-02', jobTitle: '業務副總', department: '業務部' },
+    { contactId: 'contact-03', companyId: 'company-03', jobTitle: '技術總監', department: '技術部' },
+    { contactId: 'contact-04', companyId: 'company-04', jobTitle: '採購主管', department: '採購部' },
+    { contactId: 'contact-05', companyId: 'company-05', jobTitle: '企劃經理', department: '行銷企劃部' },
+    { contactId: 'contact-06', companyId: 'company-06', jobTitle: '資深工程師', department: '工程部' },
+    { contactId: 'contact-07', companyId: 'company-07', jobTitle: '研究員', department: '國際合作組' },
+    { contactId: 'contact-08', companyId: 'company-08', jobTitle: '行銷總監', department: '行銷部' },
+    { contactId: 'contact-09', companyId: 'company-09', jobTitle: '工地主任', department: '工程部' },
+    { contactId: 'contact-10', companyId: 'company-10', jobTitle: '營運長', department: '營運管理部' },
     // Some contacts belong to multiple companies
-    { contactId: 'contact-01', companyId: 'company-06', jobTitle: '顧問' },
-    { contactId: 'contact-03', companyId: 'company-09', jobTitle: '技術顧問' },
+    { contactId: 'contact-01', companyId: 'company-06', jobTitle: '顧問', department: null },
+    { contactId: 'contact-03', companyId: 'company-09', jobTitle: '技術顧問', department: null },
   ];
 
   for (const j of junctionData) {

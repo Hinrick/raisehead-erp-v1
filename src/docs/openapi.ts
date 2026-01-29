@@ -58,18 +58,64 @@ const CompanySchema = {
   },
 };
 
+const ContactEmailSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    value: { type: 'string', format: 'email' },
+    label: { type: 'string', example: 'work' },
+    primary: { type: 'boolean' },
+  },
+};
+
+const ContactPhoneSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    value: { type: 'string' },
+    label: { type: 'string', example: 'work' },
+    primary: { type: 'boolean' },
+  },
+};
+
+const ContactAddressSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    label: { type: 'string', example: 'work' },
+    primary: { type: 'boolean' },
+    formattedValue: { type: 'string', nullable: true },
+    street: { type: 'string', nullable: true },
+    city: { type: 'string', nullable: true },
+    state: { type: 'string', nullable: true },
+    postalCode: { type: 'string', nullable: true },
+    country: { type: 'string', nullable: true },
+    countryCode: { type: 'string', nullable: true },
+  },
+};
+
 const ContactSchema = {
   type: 'object',
   properties: {
     id: { type: 'string', format: 'uuid' },
     displayName: { type: 'string' },
+    firstName: { type: 'string', nullable: true },
+    lastName: { type: 'string', nullable: true },
+    middleName: { type: 'string', nullable: true },
+    namePrefix: { type: 'string', nullable: true },
+    nameSuffix: { type: 'string', nullable: true },
+    nickname: { type: 'string', nullable: true },
     email: { type: 'string', nullable: true },
     phone: { type: 'string', nullable: true },
     address: { type: 'string', nullable: true },
     notes: { type: 'string', nullable: true },
-    firstName: { type: 'string', nullable: true },
-    lastName: { type: 'string', nullable: true },
+    birthday: { type: 'string', format: 'date-time', nullable: true },
+    gender: { type: 'string', nullable: true },
+    taxId: { type: 'string', nullable: true },
     nameCardPath: { type: 'string', nullable: true, description: 'Relative path to name card image' },
+    emails: { type: 'array', items: { $ref: '#/components/schemas/ContactEmail' } },
+    phones: { type: 'array', items: { $ref: '#/components/schemas/ContactPhone' } },
+    addresses: { type: 'array', items: { $ref: '#/components/schemas/ContactAddress' } },
     companies: {
       type: 'array',
       items: {
@@ -77,6 +123,7 @@ const ContactSchema = {
         properties: {
           company: { $ref: '#/components/schemas/Company' },
           jobTitle: { type: 'string', nullable: true },
+          department: { type: 'string', nullable: true },
         },
       },
     },
@@ -227,6 +274,9 @@ export const openApiDocument = {
       User: UserSchema,
       Company: CompanySchema,
       Contact: ContactSchema,
+      ContactEmail: ContactEmailSchema,
+      ContactPhone: ContactPhoneSchema,
+      ContactAddress: ContactAddressSchema,
       Tag: TagSchema,
       QuotationItem: QuotationItemSchema,
       Quotation: QuotationSchema,
@@ -647,6 +697,16 @@ export const openApiDocument = {
                   notes: { type: 'string' },
                   firstName: { type: 'string' },
                   lastName: { type: 'string' },
+                  middleName: { type: 'string' },
+                  namePrefix: { type: 'string' },
+                  nameSuffix: { type: 'string' },
+                  nickname: { type: 'string' },
+                  birthday: { type: 'string', format: 'date-time' },
+                  gender: { type: 'string' },
+                  taxId: { type: 'string' },
+                  emails: { type: 'array', items: { type: 'object', properties: { value: { type: 'string' }, label: { type: 'string' }, primary: { type: 'boolean' } } } },
+                  phones: { type: 'array', items: { type: 'object', properties: { value: { type: 'string' }, label: { type: 'string' }, primary: { type: 'boolean' } } } },
+                  addresses: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, primary: { type: 'boolean' }, formattedValue: { type: 'string' }, street: { type: 'string' }, city: { type: 'string' }, state: { type: 'string' }, postalCode: { type: 'string' }, country: { type: 'string' }, countryCode: { type: 'string' } } } },
                 },
               },
             },
@@ -746,6 +806,16 @@ export const openApiDocument = {
                   notes: { type: 'string' },
                   firstName: { type: 'string' },
                   lastName: { type: 'string' },
+                  middleName: { type: 'string' },
+                  namePrefix: { type: 'string' },
+                  nameSuffix: { type: 'string' },
+                  nickname: { type: 'string' },
+                  birthday: { type: 'string', format: 'date-time' },
+                  gender: { type: 'string' },
+                  taxId: { type: 'string' },
+                  emails: { type: 'array', items: { type: 'object', properties: { value: { type: 'string' }, label: { type: 'string' }, primary: { type: 'boolean' } } } },
+                  phones: { type: 'array', items: { type: 'object', properties: { value: { type: 'string' }, label: { type: 'string' }, primary: { type: 'boolean' } } } },
+                  addresses: { type: 'array', items: { type: 'object', properties: { label: { type: 'string' }, primary: { type: 'boolean' }, formattedValue: { type: 'string' }, street: { type: 'string' }, city: { type: 'string' }, state: { type: 'string' }, postalCode: { type: 'string' }, country: { type: 'string' }, countryCode: { type: 'string' } } } },
                 },
               },
             },
@@ -891,6 +961,7 @@ export const openApiDocument = {
                 properties: {
                   companyId: { type: 'string', format: 'uuid' },
                   jobTitle: { type: 'string' },
+                  department: { type: 'string' },
                 },
               },
             },

@@ -64,8 +64,8 @@ export async function removeTag(req: Request, res: Response) {
 
 export async function addCompany(req: Request, res: Response) {
   const id = req.params.id as string;
-  const { companyId, jobTitle } = req.body as { companyId: string; jobTitle?: string };
-  const contact = await contactService.addCompany(id, companyId, jobTitle);
+  const { companyId, jobTitle, department } = req.body as { companyId: string; jobTitle?: string; department?: string };
+  const contact = await contactService.addCompany(id, companyId, jobTitle, department);
   sendSuccess(res, contact, 'Company association added successfully');
 }
 

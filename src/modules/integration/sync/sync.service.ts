@@ -8,7 +8,7 @@ import * as outlookContacts from '../providers/outlook/outlook.contacts.js';
 import * as notionContacts from '../providers/notion/notion.contacts.js';
 
 interface ProviderAdapter {
-  pushContact(contact: Contact, externalId?: string, databaseId?: string): Promise<{ externalId: string; externalData: Record<string, unknown> }>;
+  pushContact(contact: any, externalId?: string, databaseId?: string): Promise<{ externalId: string; externalData: Record<string, unknown> }>;
   pullContact(externalId: string): Promise<{ data: Record<string, unknown>; lastModified: Date | null }>;
   deleteContact(externalId: string): Promise<void>;
   fetchAllContacts(databaseId: string): Promise<Array<{ externalId: string; data: Record<string, unknown>; lastModified: Date | null }>>;
@@ -44,10 +44,19 @@ async function isProviderEnabled(provider: SyncProvider): Promise<boolean> {
  * Pushes changes to all linked external providers,
  * and creates new Notion links based on tag-to-database mappings.
  */
+const contactRelationsInclude = {
+  emails: true,
+  phones: true,
+  addresses: true,
+  companies: {
+    include: { company: true },
+  },
+};
+
 export async function onContactChanged(contactId: string) {
   const contact = await prisma.contact.findUnique({
     where: { id: contactId },
-    include: { externalLinks: true, tags: true },
+    include: { ...contactRelationsInclude, externalLinks: true, tags: true },
   });
 
   if (!contact) return;
@@ -182,7 +191,7 @@ export async function syncSingleContact(provider: SyncProvider, contactId: strin
 
   const contact = await prisma.contact.findUnique({
     where: { id: contactId },
-    include: { externalLinks: true },
+    include: { ...contactRelationsInclude, externalLinks: true },
   });
 
   if (!contact) {
@@ -261,6 +270,7 @@ export async function fullSync(provider: SyncProvider) {
   // Push all local contacts that have links to this provider
   const linkedContacts = await prisma.contact.findMany({
     include: {
+      ...contactRelationsInclude,
       externalLinks: {
         where: { provider },
       },
@@ -353,6 +363,10 @@ export async function handleInboundChange(
 
   if (!link) {
     // New external contact — create locally
+    const emailsData = externalData.emails as Array<{ value: string; label: string; primary: boolean }> | undefined;
+    const phonesData = externalData.phones as Array<{ value: string; label: string; primary: boolean }> | undefined;
+    const addressesData = externalData.addresses as Array<Record<string, unknown>> | undefined;
+
     const contact = await prisma.contact.create({
       data: {
         displayName: (externalData.displayName as string) || 'Unknown',
@@ -361,6 +375,32 @@ export async function handleInboundChange(
         address: (externalData.address as string) ?? null,
         firstName: (externalData.firstName as string) ?? null,
         lastName: (externalData.lastName as string) ?? null,
+        middleName: (externalData.middleName as string) ?? null,
+        namePrefix: (externalData.namePrefix as string) ?? null,
+        nameSuffix: (externalData.nameSuffix as string) ?? null,
+        nickname: (externalData.nickname as string) ?? null,
+        birthday: externalData.birthday ? new Date(externalData.birthday as string) : null,
+        gender: (externalData.gender as string) ?? null,
+        taxId: (externalData.taxId as string) ?? null,
+        ...(emailsData?.length ? { emails: { create: emailsData } } : {}),
+        ...(phonesData?.length ? { phones: { create: phonesData } } : {}),
+        ...(addressesData?.length
+          ? {
+              addresses: {
+                create: addressesData.map((a) => ({
+                  label: (a.label as string) || 'work',
+                  primary: (a.primary as boolean) || false,
+                  formattedValue: (a.formattedValue as string) || null,
+                  street: (a.street as string) || null,
+                  city: (a.city as string) || null,
+                  state: (a.state as string) || null,
+                  postalCode: (a.postalCode as string) || null,
+                  country: (a.country as string) || null,
+                  countryCode: (a.countryCode as string) || null,
+                })),
+              },
+            }
+          : {}),
         externalLinks: {
           create: {
             provider,
@@ -403,16 +443,61 @@ export async function handleInboundChange(
   const resolution = resolveConflict(link.contact, lastModified, link);
 
   if (resolution.action === 'PULL_EXTERNAL') {
-    const updated = await prisma.contact.update({
-      where: { id: link.contactId },
-      data: {
-        displayName: (externalData.displayName as string) || link.contact.displayName,
-        email: (externalData.email as string) ?? link.contact.email,
-        phone: (externalData.phone as string) ?? link.contact.phone,
-        address: (externalData.address as string) ?? link.contact.address,
-        firstName: (externalData.firstName as string) ?? link.contact.firstName,
-        lastName: (externalData.lastName as string) ?? link.contact.lastName,
-      },
+    const emailsData = externalData.emails as Array<{ value: string; label: string; primary: boolean }> | undefined;
+    const phonesData = externalData.phones as Array<{ value: string; label: string; primary: boolean }> | undefined;
+    const addressesData = externalData.addresses as Array<Record<string, unknown>> | undefined;
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const result = await tx.contact.update({
+        where: { id: link.contactId },
+        data: {
+          displayName: (externalData.displayName as string) || link.contact.displayName,
+          email: (externalData.email as string) ?? link.contact.email,
+          phone: (externalData.phone as string) ?? link.contact.phone,
+          address: (externalData.address as string) ?? link.contact.address,
+          firstName: (externalData.firstName as string) ?? link.contact.firstName,
+          lastName: (externalData.lastName as string) ?? link.contact.lastName,
+          middleName: (externalData.middleName as string) ?? link.contact.middleName,
+          namePrefix: (externalData.namePrefix as string) ?? link.contact.namePrefix,
+          nameSuffix: (externalData.nameSuffix as string) ?? link.contact.nameSuffix,
+          nickname: (externalData.nickname as string) ?? link.contact.nickname,
+          birthday: externalData.birthday ? new Date(externalData.birthday as string) : link.contact.birthday,
+          gender: (externalData.gender as string) ?? link.contact.gender,
+          taxId: (externalData.taxId as string) ?? link.contact.taxId,
+        },
+      });
+
+      if (emailsData?.length) {
+        await tx.contactEmail.deleteMany({ where: { contactId: link.contactId } });
+        await tx.contactEmail.createMany({
+          data: emailsData.map((e) => ({ ...e, contactId: link.contactId })),
+        });
+      }
+      if (phonesData?.length) {
+        await tx.contactPhone.deleteMany({ where: { contactId: link.contactId } });
+        await tx.contactPhone.createMany({
+          data: phonesData.map((p) => ({ ...p, contactId: link.contactId })),
+        });
+      }
+      if (addressesData?.length) {
+        await tx.contactAddress.deleteMany({ where: { contactId: link.contactId } });
+        await tx.contactAddress.createMany({
+          data: addressesData.map((a) => ({
+            contactId: link.contactId,
+            label: (a.label as string) || 'work',
+            primary: (a.primary as boolean) || false,
+            formattedValue: (a.formattedValue as string) || null,
+            street: (a.street as string) || null,
+            city: (a.city as string) || null,
+            state: (a.state as string) || null,
+            postalCode: (a.postalCode as string) || null,
+            country: (a.country as string) || null,
+            countryCode: (a.countryCode as string) || null,
+          })),
+        });
+      }
+
+      return result;
     });
 
     await prisma.externalContactLink.update({
@@ -483,6 +568,29 @@ export async function fullSyncNotionMapping(mappingId: string) {
   let processed = 0;
   let errors = 0;
 
+  // 0. Ensure the Notion database has all required properties
+  try {
+    const result = await notionContacts.ensureDatabaseProperties(mapping.notionDatabaseId);
+    if (result.created.length > 0) {
+      await syncLogService.createLog({
+        provider: 'NOTION',
+        direction: 'BOTH',
+        status: 'SYNCED',
+        message: `Created missing properties in Notion DB "${mapping.notionDatabaseName}": ${result.created.join(', ')}`,
+      });
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    await syncLogService.createLog({
+      provider: 'NOTION',
+      direction: 'BOTH',
+      status: 'ERROR',
+      message: `Failed to ensure properties in Notion DB "${mapping.notionDatabaseName}"`,
+      errorDetails: errorMsg,
+    });
+    // Continue with sync anyway — existing properties may still work
+  }
+
   // 1. Pull: fetch all contacts from Notion DB and sync inbound
   try {
     const externalContacts = await notionContacts.fetchAllContacts(mapping.notionDatabaseId);
@@ -528,6 +636,7 @@ export async function fullSyncNotionMapping(mappingId: string) {
       ? { tags: { some: { tagId: mapping.tagId } } }
       : {},
     include: {
+      ...contactRelationsInclude,
       externalLinks: {
         where: { provider: 'NOTION' },
       },
