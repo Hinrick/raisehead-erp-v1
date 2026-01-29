@@ -7,13 +7,11 @@ import type { CreateContactInput, UpdateContactInput } from './contact.schema.js
 export async function findAll(
   page = 1,
   limit = 20,
-  type?: 'PERSON' | 'COMPANY',
   tagId?: string,
 ) {
   const skip = (page - 1) * limit;
 
   const where: Record<string, unknown> = {};
-  if (type) where.type = type;
   if (tagId) {
     where.tags = { some: { tagId } };
   }
@@ -25,8 +23,11 @@ export async function findAll(
       where,
       include: {
         tags: { include: { tag: true } },
-        company: { select: { id: true, displayName: true } },
-        _count: { select: { members: true, quotations: true } },
+        companies: {
+          include: {
+            company: { select: { id: true, name: true } },
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     }),
@@ -49,17 +50,10 @@ export async function findById(id: string) {
     where: { id },
     include: {
       tags: { include: { tag: true } },
-      company: { select: { id: true, displayName: true } },
-      members: {
-        select: {
-          id: true,
-          displayName: true,
-          email: true,
-          phone: true,
-          jobTitle: true,
-        },
+      companies: {
+        include: { company: true },
       },
-      quotations: {
+      personQuotations: {
         select: {
           id: true,
           quotationNumber: true,
@@ -91,32 +85,23 @@ export async function findById(id: string) {
 }
 
 export async function create(input: CreateContactInput) {
-  if (input.companyId) {
-    const company = await prisma.contact.findUnique({
-      where: { id: input.companyId },
-    });
-    if (!company || company.type !== 'COMPANY') {
-      throw new AppError('Company not found or is not a COMPANY type contact', 400);
-    }
-  }
-
   return prisma.contact.create({
     data: {
-      type: input.type,
       displayName: input.displayName,
       email: input.email || null,
       phone: input.phone || null,
       address: input.address || null,
       notes: input.notes || null,
-      taxId: input.taxId || null,
       firstName: input.firstName || null,
       lastName: input.lastName || null,
-      jobTitle: input.jobTitle || null,
-      companyId: input.companyId || null,
     },
     include: {
       tags: { include: { tag: true } },
-      company: { select: { id: true, displayName: true } },
+      companies: {
+        include: {
+          company: { select: { id: true, name: true } },
+        },
+      },
     },
   });
 }
@@ -124,21 +109,16 @@ export async function create(input: CreateContactInput) {
 export async function update(id: string, input: UpdateContactInput) {
   await findById(id);
 
-  if (input.companyId) {
-    const company = await prisma.contact.findUnique({
-      where: { id: input.companyId },
-    });
-    if (!company || company.type !== 'COMPANY') {
-      throw new AppError('Company not found or is not a COMPANY type contact', 400);
-    }
-  }
-
   return prisma.contact.update({
     where: { id },
     data: input,
     include: {
       tags: { include: { tag: true } },
-      company: { select: { id: true, displayName: true } },
+      companies: {
+        include: {
+          company: { select: { id: true, name: true } },
+        },
+      },
     },
   });
 }
@@ -147,12 +127,12 @@ export async function remove(id: string) {
   await findById(id);
 
   const quotationCount = await prisma.quotation.count({
-    where: { contactId: id },
+    where: { contactPersonId: id },
   });
 
   if (quotationCount > 0) {
     throw new AppError(
-      `Cannot delete contact with ${quotationCount} quotation(s). Delete quotations first.`,
+      `Cannot delete contact with ${quotationCount} quotation(s). Remove contact from quotations first.`,
       400,
     );
   }
@@ -166,14 +146,17 @@ export async function search(query: string) {
       OR: [
         { displayName: { contains: query, mode: 'insensitive' } },
         { email: { contains: query, mode: 'insensitive' } },
-        { taxId: { contains: query } },
         { firstName: { contains: query, mode: 'insensitive' } },
         { lastName: { contains: query, mode: 'insensitive' } },
       ],
     },
     include: {
       tags: { include: { tag: true } },
-      company: { select: { id: true, displayName: true } },
+      companies: {
+        include: {
+          company: { select: { id: true, name: true } },
+        },
+      },
     },
     take: 10,
     orderBy: { displayName: 'asc' },
@@ -210,26 +193,33 @@ export async function removeTag(contactId: string, tagId: string) {
   return findById(contactId);
 }
 
-export async function getMembers(companyId: string) {
-  const contact = await prisma.contact.findUnique({
-    where: { id: companyId },
-  });
+export async function addCompany(contactId: string, companyId: string, jobTitle?: string) {
+  await findById(contactId);
 
-  if (!contact) {
-    throw new AppError('Contact not found', 404);
+  const company = await prisma.company.findUnique({ where: { id: companyId } });
+  if (!company) {
+    throw new AppError('Company not found', 404);
   }
 
-  if (contact.type !== 'COMPANY') {
-    throw new AppError('Contact is not a company', 400);
-  }
-
-  return prisma.contact.findMany({
-    where: { companyId },
-    include: {
-      tags: { include: { tag: true } },
-    },
-    orderBy: { displayName: 'asc' },
+  await prisma.contactCompany.create({
+    data: { contactId, companyId, jobTitle: jobTitle || null },
+  }).catch(() => {
+    throw new AppError('Contact is already associated with this company', 409);
   });
+
+  return findById(contactId);
+}
+
+export async function removeCompany(contactId: string, companyId: string) {
+  await findById(contactId);
+
+  await prisma.contactCompany.delete({
+    where: { contactId_companyId: { contactId, companyId } },
+  }).catch(() => {
+    throw new AppError('Company association not found on this contact', 404);
+  });
+
+  return findById(contactId);
 }
 
 export async function updateNameCard(contactId: string, relativePath: string) {

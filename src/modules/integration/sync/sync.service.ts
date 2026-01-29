@@ -274,7 +274,6 @@ export async function handleInboundChange(
     // New external contact — create locally
     const contact = await prisma.contact.create({
       data: {
-        type: 'PERSON',
         displayName: (externalData.displayName as string) || 'Unknown',
         email: externalData.email as string || null,
         phone: externalData.phone as string || null,

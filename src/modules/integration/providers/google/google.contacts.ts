@@ -35,7 +35,7 @@ export async function pushContact(
     emailAddresses: contact.email ? [{ value: contact.email }] : [],
     phoneNumbers: contact.phone ? [{ value: contact.phone }] : [],
     addresses: contact.address ? [{ formattedValue: contact.address }] : [],
-    organizations: contact.jobTitle ? [{ title: contact.jobTitle }] : [],
+    organizations: [],
     biographies: contact.notes ? [{ value: contact.notes }] : [],
   };
 

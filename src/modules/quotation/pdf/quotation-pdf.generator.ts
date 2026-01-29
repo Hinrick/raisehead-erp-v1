@@ -1,5 +1,5 @@
 import PDFDocument from 'pdfkit';
-import type { Quotation, Contact, QuotationItem, PaymentTerm, QuotationNote } from '@prisma/client';
+import type { Quotation, Company, Contact, QuotationItem, PaymentTerm, QuotationNote } from '@prisma/client';
 import { config } from '../../../config/index.js';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -32,7 +32,7 @@ const C = {
 };
 
 type QuotationWithRelations = Quotation & {
-  contact: Contact;
+  company: Company;
   contactPerson: Contact | null;
   items: QuotationItem[];
   paymentTerms: PaymentTerm[];
@@ -176,7 +176,7 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
 
     const clientStartY = y;
     doc.fontSize(14).font('TC-Bold').fillColor(C.text);
-    doc.text(quotation.contact.displayName, ml, y, { lineBreak: false });
+    doc.text(quotation.company.name, ml, y, { lineBreak: false });
     y += 24;
 
     const clblW = 55;
@@ -185,10 +185,10 @@ export async function generateQuotationPdf(quotation: QuotationWithRelations): P
     const contactPersonName = quotation.contactPerson?.displayName || '-';
 
     const clientFields: [string, string][] = [
-      ['統一編號', quotation.contact.taxId || '-'],
+      ['統一編號', quotation.company.taxId || '-'],
       ['聯絡窗口', contactPersonName],
-      ['電子郵件', (quotation.contactPerson?.email || quotation.contact.email) || '-'],
-      ['聯絡電話', (quotation.contactPerson?.phone || quotation.contact.phone) || '-'],
+      ['電子郵件', (quotation.contactPerson?.email || quotation.company.email) || '-'],
+      ['聯絡電話', (quotation.contactPerson?.phone || quotation.company.phone) || '-'],
     ];
     for (const [label, value] of clientFields) {
       doc.fontSize(8.5).font('TC').fillColor(C.textLight);

@@ -1,17 +1,13 @@
 import { z } from 'zod';
 
 export const createContactSchema = z.object({
-  type: z.enum(['PERSON', 'COMPANY']),
   displayName: z.string().min(1, 'Display name is required'),
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().optional(),
   address: z.string().optional(),
   notes: z.string().optional(),
-  taxId: z.string().optional(),
   firstName: z.string().optional(),
   lastName: z.string().optional(),
-  jobTitle: z.string().optional(),
-  companyId: z.string().uuid().optional().nullable(),
 });
 
 export const updateContactSchema = createContactSchema.partial();
@@ -31,8 +27,17 @@ export const tagIdParamSchema = z.object({
 
 export const contactSearchSchema = z.object({
   q: z.string().optional(),
-  type: z.enum(['PERSON', 'COMPANY']).optional(),
   tagId: z.string().uuid().optional(),
+});
+
+export const contactCompanySchema = z.object({
+  companyId: z.string().uuid('Invalid company ID'),
+  jobTitle: z.string().optional(),
+});
+
+export const contactCompanyParamSchema = z.object({
+  id: z.string().uuid('Invalid contact ID'),
+  companyId: z.string().uuid('Invalid company ID'),
 });
 
 export type CreateContactInput = z.infer<typeof createContactSchema>;

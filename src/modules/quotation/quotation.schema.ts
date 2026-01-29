@@ -11,7 +11,7 @@ export const createQuotationSchema = z.object({
   quotationNumber: z.string().min(1, 'Quotation number is required'),
   projectName: z.string().min(1, 'Project name is required'),
   quotationDate: z.string().datetime().or(z.string().regex(/^\d{4}-\d{2}-\d{2}$/)),
-  contactId: z.string().uuid('Invalid contact ID'),
+  companyId: z.string().uuid('Invalid company ID'),
   contactPersonId: z.string().uuid('Invalid contact person ID').optional().nullable(),
   items: z.array(quotationItemSchema).min(1, 'At least one item is required'),
   originalTotal: z.number().min(0),

@@ -8,6 +8,7 @@ import { authRoutes } from './modules/auth/auth.routes.js';
 import { contactRoutes } from './modules/contact/contact.routes.js';
 import { tagRoutes } from './modules/tag/tag.routes.js';
 import { quotationRoutes } from './modules/quotation/quotation.routes.js';
+import { companyRoutes } from './modules/company/company.routes.js';
 import { integrationRoutes } from './modules/integration/integration.routes.js';
 import { oauthRoutes } from './modules/integration/oauth/oauth.routes.js';
 import { syncRoutes } from './modules/integration/sync/sync.routes.js';
@@ -55,6 +56,7 @@ app.get('/openapi.json', (_req, res) => {
 // API routes
 app.use('/api/auth', authRoutes);
 app.use('/api/contacts', contactRoutes);
+app.use('/api/companies', companyRoutes);
 app.use('/api/tags', tagRoutes);
 app.use('/api/quotations', quotationRoutes);
 app.use('/api/integrations', integrationRoutes);

@@ -40,22 +40,46 @@ const TagSchema = {
   },
 };
 
+const CompanySchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    name: { type: 'string' },
+    taxId: { type: 'string', nullable: true },
+    address: { type: 'string', nullable: true },
+    phone: { type: 'string', nullable: true },
+    email: { type: 'string', nullable: true },
+    website: { type: 'string', nullable: true },
+    fax: { type: 'string', nullable: true },
+    industry: { type: 'string', nullable: true },
+    notes: { type: 'string', nullable: true },
+    createdAt: { type: 'string', format: 'date-time' },
+    updatedAt: { type: 'string', format: 'date-time' },
+  },
+};
+
 const ContactSchema = {
   type: 'object',
   properties: {
     id: { type: 'string', format: 'uuid' },
-    type: { type: 'string', enum: ['PERSON', 'COMPANY'] },
     displayName: { type: 'string' },
     email: { type: 'string', nullable: true },
     phone: { type: 'string', nullable: true },
     address: { type: 'string', nullable: true },
     notes: { type: 'string', nullable: true },
-    taxId: { type: 'string', nullable: true },
     firstName: { type: 'string', nullable: true },
     lastName: { type: 'string', nullable: true },
-    jobTitle: { type: 'string', nullable: true },
-    companyId: { type: 'string', format: 'uuid', nullable: true },
     nameCardPath: { type: 'string', nullable: true, description: 'Relative path to name card image' },
+    companies: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          company: { $ref: '#/components/schemas/Company' },
+          jobTitle: { type: 'string', nullable: true },
+        },
+      },
+    },
     createdAt: { type: 'string', format: 'date-time' },
     updatedAt: { type: 'string', format: 'date-time' },
   },
@@ -80,7 +104,7 @@ const QuotationSchema = {
     quotationNumber: { type: 'string' },
     projectName: { type: 'string' },
     quotationDate: { type: 'string', format: 'date-time' },
-    contactId: { type: 'string', format: 'uuid' },
+    companyId: { type: 'string', format: 'uuid' },
     contactPersonId: { type: 'string', format: 'uuid', nullable: true },
     status: { type: 'string', enum: ['DRAFT', 'SENT', 'ACCEPTED', 'REJECTED', 'EXPIRED'] },
     originalTotal: { type: 'string', description: 'Decimal as string' },
@@ -158,8 +182,8 @@ export const openApiDocument = {
   openapi: '3.0.3',
   info: {
     title: 'RaiseHead ERP API',
-    version: '2.0.0',
-    description: '抬頭工作室 ERP 系統 - 聯絡人管理 & 報價單管理 API',
+    version: '3.0.0',
+    description: '抬頭工作室 ERP 系統 - 公司管理 & 聯絡人管理 & 報價單管理 API',
     contact: {
       name: 'RaiseHead Studio',
       email: 'contact@raisehead.studio',
@@ -179,6 +203,7 @@ export const openApiDocument = {
     },
     schemas: {
       User: UserSchema,
+      Company: CompanySchema,
       Contact: ContactSchema,
       Tag: TagSchema,
       QuotationItem: QuotationItemSchema,
@@ -341,6 +366,216 @@ export const openApiDocument = {
       },
     },
 
+    // ==================== Companies ====================
+    '/api/companies': {
+      get: {
+        tags: ['Companies'],
+        summary: 'List all companies (paginated)',
+        security: bearerAuth,
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+        ],
+        responses: {
+          '200': {
+            description: 'List of companies',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { type: 'array', items: { $ref: '#/components/schemas/Company' } },
+                    pagination: { $ref: '#/components/schemas/Pagination' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      post: {
+        tags: ['Companies'],
+        summary: 'Create a new company',
+        security: bearerAuth,
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name'],
+                properties: {
+                  name: { type: 'string', example: '範例科技股份有限公司' },
+                  taxId: { type: 'string' },
+                  address: { type: 'string' },
+                  phone: { type: 'string' },
+                  email: { type: 'string', format: 'email' },
+                  website: { type: 'string' },
+                  fax: { type: 'string' },
+                  industry: { type: 'string' },
+                  notes: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Company created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/Company' },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/api/companies/search': {
+      get: {
+        tags: ['Companies'],
+        summary: 'Search companies',
+        description: 'Search by name, taxId, or email',
+        security: bearerAuth,
+        parameters: [
+          { name: 'q', in: 'query', required: true, schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': {
+            description: 'Search results (max 10)',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { type: 'array', items: { $ref: '#/components/schemas/Company' } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/api/companies/{id}': {
+      get: {
+        tags: ['Companies'],
+        summary: 'Get a company by ID (with contacts + quotations)',
+        security: bearerAuth,
+        parameters: [idParam],
+        responses: {
+          '200': {
+            description: 'Company details',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/Company' },
+                  },
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'Company not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+      put: {
+        tags: ['Companies'],
+        summary: 'Update a company',
+        security: bearerAuth,
+        parameters: [idParam],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  taxId: { type: 'string' },
+                  address: { type: 'string' },
+                  phone: { type: 'string' },
+                  email: { type: 'string' },
+                  website: { type: 'string' },
+                  fax: { type: 'string' },
+                  industry: { type: 'string' },
+                  notes: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Company updated',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/Company' },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'Company not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+      delete: {
+        tags: ['Companies'],
+        summary: 'Delete a company',
+        description: 'Fails if company has existing quotations',
+        security: bearerAuth,
+        parameters: [idParam],
+        responses: {
+          '200': {
+            description: 'Company deleted',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          '400': {
+            description: 'Cannot delete company with existing quotations',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '404': {
+            description: 'Company not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+    },
+
     // ==================== Contacts ====================
     '/api/contacts': {
       get: {
@@ -350,7 +585,6 @@ export const openApiDocument = {
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
           { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
-          { name: 'type', in: 'query', schema: { type: 'string', enum: ['PERSON', 'COMPANY'] } },
           { name: 'tagId', in: 'query', schema: { type: 'string', format: 'uuid' } },
         ],
         responses: {
@@ -373,7 +607,7 @@ export const openApiDocument = {
       },
       post: {
         tags: ['Contacts'],
-        summary: 'Create a new contact',
+        summary: 'Create a new contact (person)',
         security: bearerAuth,
         requestBody: {
           required: true,
@@ -381,19 +615,15 @@ export const openApiDocument = {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['type', 'displayName'],
+                required: ['displayName'],
                 properties: {
-                  type: { type: 'string', enum: ['PERSON', 'COMPANY'] },
-                  displayName: { type: 'string', example: '範例科技股份有限公司' },
+                  displayName: { type: 'string', example: '王小明' },
                   email: { type: 'string', format: 'email' },
                   phone: { type: 'string' },
                   address: { type: 'string' },
                   notes: { type: 'string' },
-                  taxId: { type: 'string' },
                   firstName: { type: 'string' },
                   lastName: { type: 'string' },
-                  jobTitle: { type: 'string' },
-                  companyId: { type: 'string', format: 'uuid' },
                 },
               },
             },
@@ -423,7 +653,7 @@ export const openApiDocument = {
       get: {
         tags: ['Contacts'],
         summary: 'Search contacts',
-        description: 'Search by name, email, or tax ID',
+        description: 'Search by name or email',
         security: bearerAuth,
         parameters: [
           { name: 'q', in: 'query', required: true, schema: { type: 'string' } },
@@ -450,7 +680,7 @@ export const openApiDocument = {
     '/api/contacts/{id}': {
       get: {
         tags: ['Contacts'],
-        summary: 'Get a contact by ID (with tags, members, quotations, external links)',
+        summary: 'Get a contact by ID (with tags, companies, quotations, external links)',
         security: bearerAuth,
         parameters: [idParam],
         responses: {
@@ -486,17 +716,13 @@ export const openApiDocument = {
               schema: {
                 type: 'object',
                 properties: {
-                  type: { type: 'string', enum: ['PERSON', 'COMPANY'] },
                   displayName: { type: 'string' },
                   email: { type: 'string' },
                   phone: { type: 'string' },
                   address: { type: 'string' },
                   notes: { type: 'string' },
-                  taxId: { type: 'string' },
                   firstName: { type: 'string' },
                   lastName: { type: 'string' },
-                  jobTitle: { type: 'string' },
-                  companyId: { type: 'string', format: 'uuid' },
                 },
               },
             },
@@ -527,7 +753,7 @@ export const openApiDocument = {
       delete: {
         tags: ['Contacts'],
         summary: 'Delete a contact',
-        description: 'Fails if contact has existing quotations',
+        description: 'Fails if contact is linked to quotations as contact person',
         security: bearerAuth,
         parameters: [idParam],
         responses: {
@@ -626,29 +852,82 @@ export const openApiDocument = {
       },
     },
 
-    '/api/contacts/{id}/members': {
-      get: {
+    '/api/contacts/{id}/companies': {
+      post: {
         tags: ['Contacts'],
-        summary: 'List people under a company contact',
+        summary: 'Associate a contact with a company',
         security: bearerAuth,
         parameters: [idParam],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['companyId'],
+                properties: {
+                  companyId: { type: 'string', format: 'uuid' },
+                  jobTitle: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
         responses: {
           '200': {
-            description: 'List of member contacts',
+            description: 'Company association added',
             content: {
               'application/json': {
                 schema: {
                   type: 'object',
                   properties: {
                     success: { type: 'boolean', example: true },
-                    data: { type: 'array', items: { $ref: '#/components/schemas/Contact' } },
+                    data: { $ref: '#/components/schemas/Contact' },
+                    message: { type: 'string' },
                   },
                 },
               },
             },
           },
-          '400': {
-            description: 'Contact is not a company',
+          '404': {
+            description: 'Contact or company not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '409': {
+            description: 'Already associated',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+    },
+
+    '/api/contacts/{id}/companies/{companyId}': {
+      delete: {
+        tags: ['Contacts'],
+        summary: 'Remove a company association from a contact',
+        security: bearerAuth,
+        parameters: [
+          idParam,
+          { name: 'companyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          '200': {
+            description: 'Company association removed',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/Contact' },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'Association not found',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
         },
@@ -912,12 +1191,12 @@ export const openApiDocument = {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['quotationNumber', 'projectName', 'quotationDate', 'contactId', 'items', 'originalTotal', 'discountedTotal'],
+                required: ['quotationNumber', 'projectName', 'quotationDate', 'companyId', 'items', 'originalTotal', 'discountedTotal'],
                 properties: {
                   quotationNumber: { type: 'string', example: '#001' },
                   projectName: { type: 'string', example: '官網改版專案' },
                   quotationDate: { type: 'string', example: '2025-01-15' },
-                  contactId: { type: 'string', format: 'uuid' },
+                  companyId: { type: 'string', format: 'uuid' },
                   contactPersonId: { type: 'string', format: 'uuid', nullable: true },
                   items: {
                     type: 'array',
@@ -960,7 +1239,7 @@ export const openApiDocument = {
             },
           },
           '404': {
-            description: 'Contact not found',
+            description: 'Company not found',
             content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
           '409': {
@@ -1040,7 +1319,7 @@ export const openApiDocument = {
                   quotationNumber: { type: 'string' },
                   projectName: { type: 'string' },
                   quotationDate: { type: 'string' },
-                  contactId: { type: 'string', format: 'uuid' },
+                  companyId: { type: 'string', format: 'uuid' },
                   contactPersonId: { type: 'string', format: 'uuid', nullable: true },
                   items: { type: 'array', items: { type: 'object' } },
                   originalTotal: { type: 'number' },

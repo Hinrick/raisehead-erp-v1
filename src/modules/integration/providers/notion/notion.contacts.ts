@@ -46,17 +46,10 @@ export async function pushContact(
     Name: { title: [{ text: { content: contact.displayName } }] },
     Email: contact.email ? { email: contact.email } : { email: null },
     Phone: contact.phone ? { phone_number: contact.phone } : { phone_number: null },
-    Type: { select: { name: contact.type } },
   };
 
   if (contact.address) {
     properties['Address'] = { rich_text: [{ text: { content: contact.address } }] };
-  }
-  if (contact.jobTitle) {
-    properties['Job Title'] = { rich_text: [{ text: { content: contact.jobTitle } }] };
-  }
-  if (contact.taxId) {
-    properties['Tax ID'] = { rich_text: [{ text: { content: contact.taxId } }] };
   }
 
   if (externalId) {

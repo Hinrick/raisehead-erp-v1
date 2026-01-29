@@ -40,14 +40,13 @@ async function main() {
 
   console.log('Created default tags:', defaultTags.map((t) => t.name).join(', '));
 
-  // Create sample company contact
-  const sampleCompany = await prisma.contact.upsert({
+  // Create sample company
+  const sampleCompany = await prisma.company.upsert({
     where: { id: 'sample-company-1' },
     update: {},
     create: {
       id: 'sample-company-1',
-      type: 'COMPANY',
-      displayName: '範例科技股份有限公司',
+      name: '範例科技股份有限公司',
       taxId: '12345678',
       email: 'contact@example.com',
       address: '台北市信義區信義路五段7號',
@@ -55,40 +54,55 @@ async function main() {
     },
   });
 
-  console.log('Created sample company:', sampleCompany.displayName);
+  console.log('Created sample company:', sampleCompany.name);
 
-  // Create sample person contact linked to company
+  // Create sample person contact
   const samplePerson = await prisma.contact.upsert({
     where: { id: 'sample-person-1' },
     update: {},
     create: {
       id: 'sample-person-1',
-      type: 'PERSON',
       displayName: '王小明',
       firstName: '小明',
       lastName: '王',
       email: 'wang@example.com',
       phone: '0912-345-678',
-      jobTitle: '專案經理',
-      companyId: sampleCompany.id,
     },
   });
 
   console.log('Created sample person:', samplePerson.displayName);
 
-  // Tag the company as 'client'
+  // Link person to company with jobTitle
+  await prisma.contactCompany.upsert({
+    where: {
+      contactId_companyId: {
+        contactId: samplePerson.id,
+        companyId: sampleCompany.id,
+      },
+    },
+    update: {},
+    create: {
+      contactId: samplePerson.id,
+      companyId: sampleCompany.id,
+      jobTitle: '專案經理',
+    },
+  });
+
+  console.log('Linked person to company with jobTitle');
+
+  // Tag the contact as 'client'
   const clientTag = await prisma.tag.findUnique({ where: { name: 'client' } });
   if (clientTag) {
     await prisma.contactTag.upsert({
       where: {
         contactId_tagId: {
-          contactId: sampleCompany.id,
+          contactId: samplePerson.id,
           tagId: clientTag.id,
         },
       },
       update: {},
       create: {
-        contactId: sampleCompany.id,
+        contactId: samplePerson.id,
         tagId: clientTag.id,
       },
     });

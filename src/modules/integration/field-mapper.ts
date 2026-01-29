@@ -7,8 +7,6 @@ export interface ExternalContactData {
   address?: string;
   firstName?: string;
   lastName?: string;
-  jobTitle?: string;
-  taxId?: string;
   notes?: string;
   [key: string]: unknown;
 }
@@ -27,7 +25,6 @@ const DEFAULT_MAPPINGS: FieldMapping[] = [
   { local: 'address', external: 'address' },
   { local: 'firstName', external: 'firstName' },
   { local: 'lastName', external: 'lastName' },
-  { local: 'jobTitle', external: 'jobTitle' },
   { local: 'notes', external: 'notes' },
 ];
 

@@ -25,12 +25,28 @@ enum Role {
   USER
 }
 
-// ── Contact System ──────────────────────────────────
+// ── Company ─────────────────────────────────────────
 
-enum ContactType {
-  PERSON
-  COMPANY
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  taxId     String?
+  address   String?
+  phone     String?
+  email     String?
+  website   String?
+  fax       String?
+  industry  String?
+  notes     String?  @db.Text
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  contacts   ContactCompany[]
+  quotations Quotation[]       @relation("CompanyQuotations")
 }
+
+// ── Contact System ──────────────────────────────────
 
 enum SyncProvider {
   GOOGLE
@@ -51,38 +67,38 @@ enum SyncDirection {
 }
 
 model Contact {
-  id          String      @id @default(uuid())
-  type        ContactType
+  id          String  @id @default(uuid())
   displayName String
+  firstName   String?
+  lastName    String?
   email       String?
   phone       String?
   address     String?
-  notes       String?     @db.Text
-
-  // COMPANY fields
-  taxId String?
-
-  // PERSON fields
-  firstName String?
-  lastName  String?
-  jobTitle  String?
+  notes       String? @db.Text
 
   // Name card image
   nameCardPath String?
-
-  // PERSON belongs to COMPANY (self-reference)
-  companyId String?
-  company   Contact?  @relation("CompanyMembers", fields: [companyId], references: [id])
-  members   Contact[] @relation("CompanyMembers")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   // Relations
-  quotations      Quotation[]         @relation("ContactQuotations")
-  personQuotations Quotation[]        @relation("ContactPersonQuotations")
-  tags            ContactTag[]
-  externalLinks   ExternalContactLink[]
+  companies        ContactCompany[]
+  tags             ContactTag[]
+  externalLinks    ExternalContactLink[]
+  personQuotations Quotation[]           @relation("ContactPersonQuotations")
+}
+
+model ContactCompany {
+  id        String   @id @default(uuid())
+  contactId String
+  contact   Contact  @relation(fields: [contactId], references: [id], onDelete: Cascade)
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  jobTitle  String?
+  createdAt DateTime @default(now())
+
+  @@unique([contactId, companyId])
 }
 
 model Tag {
@@ -171,12 +187,12 @@ model Quotation {
   quotationDate   DateTime // 報價日期
 
   // Relations
-  contactId       String
-  contact         Contact @relation("ContactQuotations", fields: [contactId], references: [id])
+  companyId       String
+  company         Company  @relation("CompanyQuotations", fields: [companyId], references: [id])
   contactPersonId String?
   contactPerson   Contact? @relation("ContactPersonQuotations", fields: [contactPersonId], references: [id])
   createdById     String
-  createdBy       User   @relation(fields: [createdById], references: [id])
+  createdBy       User     @relation(fields: [createdById], references: [id])
 
   // Pricing
   items           QuotationItem[]

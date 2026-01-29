@@ -7,10 +7,9 @@ import type { CreateContactInput, UpdateContactInput } from './contact.schema.js
 export async function findAll(req: Request, res: Response) {
   const page = parseInt(String(req.query.page || '1'), 10);
   const limit = parseInt(String(req.query.limit || '20'), 10);
-  const type = req.query.type as 'PERSON' | 'COMPANY' | undefined;
   const tagId = req.query.tagId as string | undefined;
 
-  const { contacts, pagination } = await contactService.findAll(page, limit, type, tagId);
+  const { contacts, pagination } = await contactService.findAll(page, limit, tagId);
   sendPaginated(res, contacts, pagination);
 }
 
@@ -63,10 +62,18 @@ export async function removeTag(req: Request, res: Response) {
   sendSuccess(res, contact, 'Tag removed successfully');
 }
 
-export async function getMembers(req: Request, res: Response) {
+export async function addCompany(req: Request, res: Response) {
   const id = req.params.id as string;
-  const members = await contactService.getMembers(id);
-  sendSuccess(res, members);
+  const { companyId, jobTitle } = req.body as { companyId: string; jobTitle?: string };
+  const contact = await contactService.addCompany(id, companyId, jobTitle);
+  sendSuccess(res, contact, 'Company association added successfully');
+}
+
+export async function removeCompany(req: Request, res: Response) {
+  const id = req.params.id as string;
+  const companyId = req.params.companyId as string;
+  const contact = await contactService.removeCompany(id, companyId);
+  sendSuccess(res, contact, 'Company association removed successfully');
 }
 
 export async function uploadNameCard(req: Request, res: Response) {

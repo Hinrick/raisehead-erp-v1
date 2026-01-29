@@ -9,6 +9,7 @@ import {
   updateContactSchema,
   contactIdSchema,
   contactTagsSchema,
+  contactCompanySchema,
 } from './contact.schema.js';
 
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -43,7 +44,10 @@ contactRoutes.put('/:id', validateParams(contactIdSchema), validate(updateContac
 contactRoutes.delete('/:id', validateParams(contactIdSchema), contactController.remove);
 contactRoutes.post('/:id/tags', validateParams(contactIdSchema), validate(contactTagsSchema), contactController.addTags);
 contactRoutes.delete('/:id/tags/:tagId', contactController.removeTag);
-contactRoutes.get('/:id/members', validateParams(contactIdSchema), contactController.getMembers);
+
+// Company association routes
+contactRoutes.post('/:id/companies', validateParams(contactIdSchema), validate(contactCompanySchema), contactController.addCompany);
+contactRoutes.delete('/:id/companies/:companyId', contactController.removeCompany);
 
 // Name card routes
 contactRoutes.post('/:id/namecard', validateParams(contactIdSchema), nameCardUpload.single('namecard'), contactController.uploadNameCard);

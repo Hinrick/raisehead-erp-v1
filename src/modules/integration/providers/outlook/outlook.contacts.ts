@@ -39,7 +39,7 @@ export async function pushContact(
     businessAddress: contact.address
       ? { street: contact.address }
       : undefined,
-    jobTitle: contact.jobTitle || undefined,
+    jobTitle: undefined,
     personalNotes: contact.notes || undefined,
   };
 
