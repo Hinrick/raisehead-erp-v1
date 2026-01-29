@@ -1,7 +1,6 @@
 import { Client as NotionClient } from '@notionhq/client';
 import type { Contact } from '@prisma/client';
 import { prisma } from '../../../../config/database.js';
-import { config } from '../../../../config/index.js';
 
 async function getNotionClient(): Promise<NotionClient> {
   const integrationConfig = await prisma.integrationConfig.findUnique({
@@ -21,26 +20,12 @@ async function getNotionClient(): Promise<NotionClient> {
   return new NotionClient({ auth: notionConfig.apiKey });
 }
 
-async function getDatabaseId(): Promise<string> {
-  const integrationConfig = await prisma.integrationConfig.findUnique({
-    where: { provider: 'NOTION' },
-  });
-
-  const notionConfig = integrationConfig?.config as { databaseId?: string } | undefined;
-
-  if (!notionConfig?.databaseId) {
-    throw new Error('Notion database ID not configured');
-  }
-
-  return notionConfig.databaseId;
-}
-
 export async function pushContact(
   contact: Contact,
   externalId?: string,
+  databaseId?: string,
 ): Promise<{ externalId: string; externalData: Record<string, unknown> }> {
   const notion = await getNotionClient();
-  const databaseId = await getDatabaseId();
 
   const properties: Record<string, unknown> = {
     Name: { title: [{ text: { content: contact.displayName } }] },
@@ -62,6 +47,10 @@ export async function pushContact(
       externalId: result.id,
       externalData: result as unknown as Record<string, unknown>,
     };
+  }
+
+  if (!databaseId) {
+    throw new Error('Notion database ID is required to create a new contact');
   }
 
   const result = await notion.pages.create({
@@ -115,20 +104,22 @@ export async function deleteContact(externalId: string): Promise<void> {
   });
 }
 
-export async function fetchAllContacts(): Promise<
+export async function fetchAllContacts(databaseId: string): Promise<
   Array<{ externalId: string; data: Record<string, unknown>; lastModified: Date | null }>
 > {
   const notion = await getNotionClient();
-  const databaseId = await getDatabaseId();
   const results: Array<{ externalId: string; data: Record<string, unknown>; lastModified: Date | null }> = [];
 
   let cursor: string | undefined;
 
   do {
-    const response = await (notion.databases as any).query({
-      database_id: databaseId,
-      start_cursor: cursor,
-      page_size: 100,
+    const response: any = await notion.request({
+      path: `databases/${databaseId}/query`,
+      method: 'post',
+      body: {
+        start_cursor: cursor,
+        page_size: 100,
+      },
     });
 
     for (const page of response.results) {

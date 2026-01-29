@@ -4,7 +4,7 @@ import * as syncService from '../../sync/sync.service.js';
 import * as syncLogService from '../../sync/sync-log.service.js';
 
 /**
- * Poll Notion database for changes.
+ * Poll all enabled Notion database mappings for changes.
  * Called by node-cron every 5 minutes.
  * Notion doesn't support webhooks, so we poll for changes.
  */
@@ -18,39 +18,63 @@ export async function pollNotionChanges() {
       return;
     }
 
-    const allContacts = await notionContacts.fetchAllContacts();
-    let processed = 0;
+    // Query all enabled mappings
+    const mappings = await prisma.notionDatabaseMapping.findMany({
+      where: { enabled: true },
+    });
 
-    for (const external of allContacts) {
+    if (mappings.length === 0) {
+      return;
+    }
+
+    for (const mapping of mappings) {
       try {
-        await syncService.handleInboundChange(
-          'NOTION',
-          external.externalId,
-          external.data,
-          external.lastModified,
-        );
-        processed++;
+        const allContacts = await notionContacts.fetchAllContacts(mapping.notionDatabaseId);
+        let processed = 0;
+
+        for (const external of allContacts) {
+          try {
+            await syncService.handleInboundChange(
+              'NOTION',
+              external.externalId,
+              external.data,
+              external.lastModified,
+              { tagId: mapping.tagId ?? undefined, notionDatabaseId: mapping.notionDatabaseId },
+            );
+            processed++;
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            await syncLogService.createLog({
+              provider: 'NOTION',
+              direction: 'INBOUND',
+              status: 'ERROR',
+              externalId: external.externalId,
+              message: `Failed to process Notion contact during poll (db: ${mapping.notionDatabaseName})`,
+              errorDetails: errorMsg,
+            });
+          }
+        }
+
+        if (processed > 0) {
+          await syncLogService.createLog({
+            provider: 'NOTION',
+            direction: 'INBOUND',
+            status: 'SYNCED',
+            message: `Notion poll completed for "${mapping.notionDatabaseName}": ${processed} contacts processed`,
+            recordsProcessed: processed,
+          });
+        }
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
+        console.error(`Notion polling failed for mapping "${mapping.notionDatabaseName}":`, errorMsg);
         await syncLogService.createLog({
           provider: 'NOTION',
           direction: 'INBOUND',
           status: 'ERROR',
-          externalId: external.externalId,
-          message: 'Failed to process Notion contact during poll',
+          message: `Notion polling failed for "${mapping.notionDatabaseName}"`,
           errorDetails: errorMsg,
         });
       }
-    }
-
-    if (processed > 0) {
-      await syncLogService.createLog({
-        provider: 'NOTION',
-        direction: 'INBOUND',
-        status: 'SYNCED',
-        message: `Notion poll completed: ${processed} contacts processed`,
-        recordsProcessed: processed,
-      });
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);

@@ -164,11 +164,33 @@ const SyncLogSchema = {
   },
 };
 
+const NotionDatabaseMappingSchema = {
+  type: 'object',
+  properties: {
+    id: { type: 'string', format: 'uuid' },
+    notionDatabaseId: { type: 'string' },
+    notionDatabaseName: { type: 'string' },
+    tagId: { type: 'string', format: 'uuid', nullable: true },
+    tag: { $ref: '#/components/schemas/Tag', nullable: true },
+    enabled: { type: 'boolean' },
+    createdAt: { type: 'string', format: 'date-time' },
+    updatedAt: { type: 'string', format: 'date-time' },
+  },
+};
+
 const idParam = {
   name: 'id',
   in: 'path',
   required: true,
   schema: { type: 'string', format: 'uuid' },
+};
+
+const mappingIdParam = {
+  name: 'mappingId',
+  in: 'path',
+  required: true,
+  schema: { type: 'string', format: 'uuid' },
+  description: 'Notion database mapping ID',
 };
 
 const providerParam = {
@@ -209,6 +231,7 @@ export const openApiDocument = {
       QuotationItem: QuotationItemSchema,
       Quotation: QuotationSchema,
       IntegrationConfig: IntegrationConfigSchema,
+      NotionDatabaseMapping: NotionDatabaseMappingSchema,
       SyncLog: SyncLogSchema,
       Error: ErrorResponse,
       Pagination: PaginationSchema,
@@ -1792,6 +1815,269 @@ export const openApiDocument = {
                 },
               },
             },
+          },
+        },
+      },
+    },
+
+    // ==================== Notion Database Mappings ====================
+    '/api/integrations/notion/mappings': {
+      get: {
+        tags: ['Notion Mappings'],
+        summary: 'List all Notion database mappings (ADMIN)',
+        security: bearerAuth,
+        responses: {
+          '200': {
+            description: 'List of mappings',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { type: 'array', items: { $ref: '#/components/schemas/NotionDatabaseMapping' } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      post: {
+        tags: ['Notion Mappings'],
+        summary: 'Create a Notion database mapping (ADMIN)',
+        description: 'Maps a Notion database to a tag. Contacts synced from this DB get the tag auto-assigned. Contacts with the tag get pushed to this DB.',
+        security: bearerAuth,
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['notionDatabaseId', 'notionDatabaseName'],
+                properties: {
+                  notionDatabaseId: { type: 'string', description: 'Notion database ID (from the URL)' },
+                  notionDatabaseName: { type: 'string', example: 'Clients', description: 'Friendly name for the database' },
+                  tagId: { type: 'string', format: 'uuid', nullable: true, description: 'Tag ID to map to this database. Null = global mapping (all contacts)' },
+                  enabled: { type: 'boolean', default: true },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'Mapping created',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/NotionDatabaseMapping' },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'Tag not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '409': {
+            description: 'Tag or database already mapped',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+    },
+
+    '/api/integrations/notion/mappings/{mappingId}': {
+      get: {
+        tags: ['Notion Mappings'],
+        summary: 'Get a mapping by ID',
+        security: bearerAuth,
+        parameters: [mappingIdParam],
+        responses: {
+          '200': {
+            description: 'Mapping details',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/NotionDatabaseMapping' },
+                  },
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'Mapping not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+      put: {
+        tags: ['Notion Mappings'],
+        summary: 'Update a mapping',
+        security: bearerAuth,
+        parameters: [mappingIdParam],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  notionDatabaseName: { type: 'string' },
+                  enabled: { type: 'boolean' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Mapping updated',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/NotionDatabaseMapping' },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'Mapping not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+      delete: {
+        tags: ['Notion Mappings'],
+        summary: 'Delete a mapping',
+        description: 'Removes the mapping and cleans up related external contact links',
+        security: bearerAuth,
+        parameters: [mappingIdParam],
+        responses: {
+          '200': {
+            description: 'Mapping deleted',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          '404': {
+            description: 'Mapping not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+        },
+      },
+    },
+
+    '/api/integrations/notion/mappings/{mappingId}/enable': {
+      post: {
+        tags: ['Notion Mappings'],
+        summary: 'Enable a mapping',
+        security: bearerAuth,
+        parameters: [mappingIdParam],
+        responses: {
+          '200': {
+            description: 'Mapping enabled',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/NotionDatabaseMapping' },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/api/integrations/notion/mappings/{mappingId}/disable': {
+      post: {
+        tags: ['Notion Mappings'],
+        summary: 'Disable a mapping',
+        security: bearerAuth,
+        parameters: [mappingIdParam],
+        responses: {
+          '200': {
+            description: 'Mapping disabled',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: { $ref: '#/components/schemas/NotionDatabaseMapping' },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+
+    '/api/integrations/notion/mappings/{mappingId}/sync': {
+      post: {
+        tags: ['Notion Mappings'],
+        summary: 'Full sync for a specific Notion mapping',
+        description: 'Pulls all contacts from the mapped Notion DB and pushes all ERP contacts with the mapped tag',
+        security: bearerAuth,
+        parameters: [mappingIdParam],
+        responses: {
+          '200': {
+            description: 'Sync completed',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        processed: { type: 'integer' },
+                        errors: { type: 'integer' },
+                      },
+                    },
+                    message: { type: 'string' },
+                  },
+                },
+              },
+            },
+          },
+          '400': {
+            description: 'Notion integration not enabled',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
+          },
+          '404': {
+            description: 'Mapping not found',
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/Error' } } },
           },
         },
       },

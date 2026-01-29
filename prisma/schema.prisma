@@ -106,7 +106,8 @@ model Tag {
   name     String @unique
   color    String @default("#6D28D9")
 
-  contacts ContactTag[]
+  contacts       ContactTag[]
+  notionMapping  NotionDatabaseMapping?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -136,6 +137,17 @@ model ExternalContactLink {
   updatedAt DateTime @updatedAt
 
   @@unique([provider, externalId])
+}
+
+model NotionDatabaseMapping {
+  id                 String   @id @default(uuid())
+  notionDatabaseId   String   @unique
+  notionDatabaseName String
+  tagId              String?  @unique
+  tag                Tag?     @relation(fields: [tagId], references: [id], onDelete: Restrict)
+  enabled            Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model IntegrationConfig {

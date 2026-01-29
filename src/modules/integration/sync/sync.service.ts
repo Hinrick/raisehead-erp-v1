@@ -8,18 +8,23 @@ import * as outlookContacts from '../providers/outlook/outlook.contacts.js';
 import * as notionContacts from '../providers/notion/notion.contacts.js';
 
 interface ProviderAdapter {
-  pushContact(contact: Contact, externalId?: string): Promise<{ externalId: string; externalData: Record<string, unknown> }>;
+  pushContact(contact: Contact, externalId?: string, databaseId?: string): Promise<{ externalId: string; externalData: Record<string, unknown> }>;
   pullContact(externalId: string): Promise<{ data: Record<string, unknown>; lastModified: Date | null }>;
   deleteContact(externalId: string): Promise<void>;
-  fetchAllContacts(): Promise<Array<{ externalId: string; data: Record<string, unknown>; lastModified: Date | null }>>;
+  fetchAllContacts(databaseId: string): Promise<Array<{ externalId: string; data: Record<string, unknown>; lastModified: Date | null }>>;
+}
+
+export interface InboundContext {
+  tagId?: string;
+  notionDatabaseId?: string;
 }
 
 function getAdapter(provider: SyncProvider): ProviderAdapter {
   switch (provider) {
     case 'GOOGLE':
-      return googleContacts;
+      return googleContacts as unknown as ProviderAdapter;
     case 'OUTLOOK':
-      return outlookContacts;
+      return outlookContacts as unknown as ProviderAdapter;
     case 'NOTION':
       return notionContacts;
     default:
@@ -36,22 +41,26 @@ async function isProviderEnabled(provider: SyncProvider): Promise<boolean> {
 
 /**
  * Fired asynchronously after a contact is created/updated.
- * Pushes changes to all linked external providers.
+ * Pushes changes to all linked external providers,
+ * and creates new Notion links based on tag-to-database mappings.
  */
 export async function onContactChanged(contactId: string) {
   const contact = await prisma.contact.findUnique({
     where: { id: contactId },
-    include: { externalLinks: true },
+    include: { externalLinks: true, tags: true },
   });
 
   if (!contact) return;
 
+  // 1. Push updates to all existing external links
   for (const link of contact.externalLinks) {
     if (!(await isProviderEnabled(link.provider))) continue;
 
     try {
       const adapter = getAdapter(link.provider);
-      const result = await adapter.pushContact(contact, link.externalId);
+      const externalData = link.externalData as Record<string, unknown> | null;
+      const dbId = externalData?._notionDatabaseId as string | undefined;
+      const result = await adapter.pushContact(contact, link.externalId, dbId);
 
       await prisma.externalContactLink.update({
         where: { id: link.id },
@@ -93,6 +102,71 @@ export async function onContactChanged(contactId: string) {
         message: 'Failed to push contact',
         errorDetails: errorMsg,
       });
+    }
+  }
+
+  // 2. Outbound tag-based routing for Notion
+  if (await isProviderEnabled('NOTION')) {
+    const contactTagIds = contact.tags.map((t) => t.tagId);
+    const mappings = await prisma.notionDatabaseMapping.findMany({
+      where: {
+        enabled: true,
+        OR: [
+          { tagId: { in: contactTagIds } },
+          { tagId: { equals: null } }, // global mapping — all contacts
+        ],
+      },
+    });
+
+    for (const mapping of mappings) {
+      // Check if a Notion link for this database already exists
+      const existingLink = contact.externalLinks.find((l) => {
+        if (l.provider !== 'NOTION') return false;
+        const data = l.externalData as Record<string, unknown> | null;
+        return data?._notionDatabaseId === mapping.notionDatabaseId;
+      });
+
+      if (existingLink) continue; // already pushed above
+
+      try {
+        const result = await notionContacts.pushContact(contact, undefined, mapping.notionDatabaseId);
+
+        const externalData = {
+          ...result.externalData,
+          _notionDatabaseId: mapping.notionDatabaseId,
+        };
+
+        await prisma.externalContactLink.create({
+          data: {
+            contactId: contact.id,
+            provider: 'NOTION',
+            externalId: result.externalId,
+            externalData: externalData as Prisma.InputJsonValue,
+            lastSyncedAt: new Date(),
+            syncStatus: 'SYNCED',
+          },
+        });
+
+        await syncLogService.createLog({
+          provider: 'NOTION',
+          direction: 'OUTBOUND',
+          status: 'SYNCED',
+          contactId: contact.id,
+          externalId: result.externalId,
+          message: `Contact pushed to Notion DB "${mapping.notionDatabaseName}" via ${mapping.tagId ? 'tag' : 'global'} mapping`,
+          recordsProcessed: 1,
+        });
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        await syncLogService.createLog({
+          provider: 'NOTION',
+          direction: 'OUTBOUND',
+          status: 'ERROR',
+          contactId: contact.id,
+          message: `Failed to push contact to Notion DB "${mapping.notionDatabaseName}"`,
+          errorDetails: errorMsg,
+        });
+      }
     }
   }
 }
@@ -258,13 +332,20 @@ export async function fullSync(provider: SyncProvider) {
 
 /**
  * Handle inbound changes from external provider (webhook/poll).
+ * Optional context carries tag/database info for Notion multi-mapping.
  */
 export async function handleInboundChange(
   provider: SyncProvider,
   externalId: string,
   externalData: Record<string, unknown>,
   lastModified: Date | null,
+  context?: InboundContext,
 ) {
+  // Enrich externalData with _notionDatabaseId for traceability
+  const enrichedData = context?.notionDatabaseId
+    ? { ...externalData, _notionDatabaseId: context.notionDatabaseId }
+    : externalData;
+
   const link = await prisma.externalContactLink.findUnique({
     where: { provider_externalId: { provider, externalId } },
     include: { contact: true },
@@ -275,19 +356,24 @@ export async function handleInboundChange(
     const contact = await prisma.contact.create({
       data: {
         displayName: (externalData.displayName as string) || 'Unknown',
-        email: externalData.email as string || null,
-        phone: externalData.phone as string || null,
-        firstName: externalData.firstName as string || null,
-        lastName: externalData.lastName as string || null,
+        email: (externalData.email as string) ?? null,
+        phone: (externalData.phone as string) ?? null,
+        address: (externalData.address as string) ?? null,
+        firstName: (externalData.firstName as string) ?? null,
+        lastName: (externalData.lastName as string) ?? null,
         externalLinks: {
           create: {
             provider,
             externalId,
-            externalData: externalData as Prisma.InputJsonValue,
+            externalData: enrichedData as Prisma.InputJsonValue,
             lastSyncedAt: new Date(),
             syncStatus: 'SYNCED',
           },
         },
+        // Auto-assign tag from context
+        ...(context?.tagId
+          ? { tags: { create: { tagId: context.tagId } } }
+          : {}),
       },
     });
 
@@ -304,6 +390,15 @@ export async function handleInboundChange(
     return contact;
   }
 
+  // Ensure tag is assigned for existing contact
+  if (context?.tagId) {
+    await prisma.contactTag.upsert({
+      where: { contactId_tagId: { contactId: link.contactId, tagId: context.tagId } },
+      create: { contactId: link.contactId, tagId: context.tagId },
+      update: {},
+    });
+  }
+
   // Existing contact — resolve conflict
   const resolution = resolveConflict(link.contact, lastModified, link);
 
@@ -312,17 +407,18 @@ export async function handleInboundChange(
       where: { id: link.contactId },
       data: {
         displayName: (externalData.displayName as string) || link.contact.displayName,
-        email: (externalData.email as string) || link.contact.email,
-        phone: (externalData.phone as string) || link.contact.phone,
-        firstName: (externalData.firstName as string) || link.contact.firstName,
-        lastName: (externalData.lastName as string) || link.contact.lastName,
+        email: (externalData.email as string) ?? link.contact.email,
+        phone: (externalData.phone as string) ?? link.contact.phone,
+        address: (externalData.address as string) ?? link.contact.address,
+        firstName: (externalData.firstName as string) ?? link.contact.firstName,
+        lastName: (externalData.lastName as string) ?? link.contact.lastName,
       },
     });
 
     await prisma.externalContactLink.update({
       where: { id: link.id },
       data: {
-        externalData: externalData as Prisma.InputJsonValue,
+        externalData: enrichedData as Prisma.InputJsonValue,
         lastSyncedAt: new Date(),
         syncStatus: 'SYNCED',
         syncError: null,
@@ -342,6 +438,19 @@ export async function handleInboundChange(
     return updated;
   }
 
+  // Even if no data update, ensure externalData has _notionDatabaseId
+  if (context?.notionDatabaseId) {
+    const currentData = link.externalData as Record<string, unknown> | null;
+    if (!currentData?._notionDatabaseId) {
+      await prisma.externalContactLink.update({
+        where: { id: link.id },
+        data: {
+          externalData: { ...(currentData || {}), _notionDatabaseId: context.notionDatabaseId } as Prisma.InputJsonValue,
+        },
+      });
+    }
+  }
+
   await syncLogService.createLog({
     provider,
     direction: 'INBOUND',
@@ -352,4 +461,136 @@ export async function handleInboundChange(
   });
 
   return link.contact;
+}
+
+/**
+ * Full sync for a single Notion database mapping.
+ * Pulls all contacts from the Notion DB and pushes all local contacts with the mapped tag.
+ */
+export async function fullSyncNotionMapping(mappingId: string) {
+  if (!(await isProviderEnabled('NOTION'))) {
+    throw new AppError('NOTION integration is not enabled', 400);
+  }
+
+  const mapping = await prisma.notionDatabaseMapping.findUnique({
+    where: { id: mappingId },
+  });
+
+  if (!mapping) {
+    throw new AppError('Notion database mapping not found', 404);
+  }
+
+  let processed = 0;
+  let errors = 0;
+
+  // 1. Pull: fetch all contacts from Notion DB and sync inbound
+  try {
+    const externalContacts = await notionContacts.fetchAllContacts(mapping.notionDatabaseId);
+
+    for (const external of externalContacts) {
+      try {
+        await handleInboundChange(
+          'NOTION',
+          external.externalId,
+          external.data,
+          external.lastModified,
+          { tagId: mapping.tagId ?? undefined, notionDatabaseId: mapping.notionDatabaseId },
+        );
+        processed++;
+      } catch (error) {
+        errors++;
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        await syncLogService.createLog({
+          provider: 'NOTION',
+          direction: 'INBOUND',
+          status: 'ERROR',
+          externalId: external.externalId,
+          message: 'Failed to process inbound contact during full sync',
+          errorDetails: errorMsg,
+        });
+      }
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    await syncLogService.createLog({
+      provider: 'NOTION',
+      direction: 'INBOUND',
+      status: 'ERROR',
+      message: `Failed to fetch contacts from Notion DB "${mapping.notionDatabaseName}"`,
+      errorDetails: errorMsg,
+    });
+  }
+
+  // 2. Push: find local contacts to push to Notion DB
+  //    If tagId is null (global mapping), push ALL contacts; otherwise filter by tag.
+  const contactsWithTag = await prisma.contact.findMany({
+    where: mapping.tagId
+      ? { tags: { some: { tagId: mapping.tagId } } }
+      : {},
+    include: {
+      externalLinks: {
+        where: { provider: 'NOTION' },
+      },
+    },
+  });
+
+  for (const contact of contactsWithTag) {
+    // Check if already linked to this specific Notion DB
+    const existingLink = contact.externalLinks.find((l) => {
+      const data = l.externalData as Record<string, unknown> | null;
+      return data?._notionDatabaseId === mapping.notionDatabaseId;
+    });
+
+    try {
+      if (existingLink) {
+        // Update existing
+        const result = await notionContacts.pushContact(contact, existingLink.externalId, mapping.notionDatabaseId);
+        await prisma.externalContactLink.update({
+          where: { id: existingLink.id },
+          data: {
+            externalData: { ...result.externalData, _notionDatabaseId: mapping.notionDatabaseId } as Prisma.InputJsonValue,
+            lastSyncedAt: new Date(),
+            syncStatus: 'SYNCED',
+            syncError: null,
+          },
+        });
+      } else {
+        // Create new
+        const result = await notionContacts.pushContact(contact, undefined, mapping.notionDatabaseId);
+        await prisma.externalContactLink.create({
+          data: {
+            contactId: contact.id,
+            provider: 'NOTION',
+            externalId: result.externalId,
+            externalData: { ...result.externalData, _notionDatabaseId: mapping.notionDatabaseId } as Prisma.InputJsonValue,
+            lastSyncedAt: new Date(),
+            syncStatus: 'SYNCED',
+          },
+        });
+      }
+      processed++;
+    } catch (error) {
+      errors++;
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      await syncLogService.createLog({
+        provider: 'NOTION',
+        direction: 'OUTBOUND',
+        status: 'ERROR',
+        contactId: contact.id,
+        message: `Failed to push contact to Notion DB "${mapping.notionDatabaseName}"`,
+        errorDetails: errorMsg,
+      });
+    }
+  }
+
+  await syncLogService.createLog({
+    provider: 'NOTION',
+    direction: 'BOTH',
+    status: errors > 0 ? 'ERROR' : 'SYNCED',
+    message: `Full sync for "${mapping.notionDatabaseName}" completed: ${processed} processed, ${errors} errors`,
+    recordsProcessed: processed,
+    errorDetails: errors > 0 ? `${errors} contacts failed to sync` : undefined,
+  });
+
+  return { processed, errors };
 }
