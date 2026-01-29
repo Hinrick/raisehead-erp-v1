@@ -113,13 +113,13 @@ export async function fetchAllContacts(databaseId: string): Promise<
   let cursor: string | undefined;
 
   do {
+    const body: Record<string, unknown> = { page_size: 100 };
+    if (cursor) body.start_cursor = cursor;
+
     const response: any = await notion.request({
       path: `databases/${databaseId}/query`,
       method: 'post',
-      body: {
-        start_cursor: cursor,
-        page_size: 100,
-      },
+      body,
     });
 
     for (const page of response.results) {
