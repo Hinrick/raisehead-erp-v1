@@ -34,9 +34,12 @@ jobs:
           username: root
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           script: |
+            set -e
             cd /opt/raisehead-erp
 
-            # Pull latest code
+            # Discard any local changes on server before pulling
+            git checkout .
+            git clean -fd
             git pull origin main
 
             # Build and restart
