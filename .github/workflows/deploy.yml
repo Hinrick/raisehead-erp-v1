@@ -48,7 +48,7 @@ jobs:
             sleep 15
 
             # Sync database schema
-            docker compose exec -T app npx prisma db push --force-reset --accept-data-loss
+            docker compose exec -T app npx prisma db push --accept-data-loss
 
             # Seed (idempotent, won't fail if already seeded)
             docker compose exec -T app npx prisma db seed || true
