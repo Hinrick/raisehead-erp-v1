@@ -117,7 +117,7 @@ export async function fetchAllContacts(databaseId: string): Promise<
     if (cursor) body.start_cursor = cursor;
 
     const response: any = await notion.request({
-      path: `databases/${databaseId}/query`,
+      path: `data_sources/${databaseId}/query`,
       method: 'post',
       body,
     });
