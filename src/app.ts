@@ -14,6 +14,7 @@ import { oauthRoutes } from './modules/integration/oauth/oauth.routes.js';
 import { syncRoutes } from './modules/integration/sync/sync.routes.js';
 import { handleGoogleWebhook } from './modules/integration/providers/google/google.webhook.js';
 import { handleOutlookWebhook } from './modules/integration/providers/outlook/outlook.webhook.js';
+import { notionMappingRoutes } from './modules/integration/providers/notion/notion-mapping.routes.js';
 
 export const app = express();
 
@@ -62,6 +63,7 @@ app.use('/api/quotations', quotationRoutes);
 app.use('/api/integrations', integrationRoutes);
 app.use('/api/oauth', oauthRoutes);
 app.use('/api/sync', syncRoutes);
+app.use('/api/integrations/notion/mappings', notionMappingRoutes);
 
 // Webhook routes (no auth, verified by provider signatures)
 app.post('/api/webhooks/google', handleGoogleWebhook);
