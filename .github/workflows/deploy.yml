@@ -47,8 +47,8 @@ jobs:
             echo "Waiting for services..."
             sleep 15
 
-            # Sync database schema
-            docker compose exec -T app npx prisma db push
+            # Sync database schema (accept-data-loss for breaking schema changes)
+            docker compose exec -T app npx prisma db push --accept-data-loss
 
             # Seed (idempotent, won't fail if already seeded)
             docker compose exec -T app npx prisma db seed || true
