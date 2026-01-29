@@ -3,7 +3,7 @@ import { z } from 'zod';
 export const createNotionMappingSchema = z.object({
   notionDatabaseId: z.string().min(1, 'Notion database ID is required'),
   notionDatabaseName: z.string().min(1, 'Notion database name is required'),
-  tagId: z.string().uuid('Invalid tag ID').nullable().optional(),
+  tagId: z.union([z.string().uuid('Invalid tag ID'), z.null()]).optional(),
   enabled: z.boolean().optional(),
 });
 
