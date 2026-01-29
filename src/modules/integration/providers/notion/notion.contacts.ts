@@ -113,13 +113,15 @@ export async function fetchAllContacts(databaseId: string): Promise<
   let cursor: string | undefined;
 
   do {
-    const queryArgs: any = {
-      data_source_id: databaseId,
-      page_size: 100,
-    };
-    if (cursor) queryArgs.start_cursor = cursor;
+    const body: Record<string, unknown> = { page_size: 100 };
+    if (cursor) body.start_cursor = cursor;
 
-    const response: any = await (notion.dataSources as any).query(queryArgs);
+    const response: any = await notion.request({
+      path: `databases/${databaseId}/query`,
+      method: 'post',
+      body,
+      headers: { 'Notion-Version': '2022-06-28' },
+    });
 
     for (const page of response.results) {
       const p = page as any;
