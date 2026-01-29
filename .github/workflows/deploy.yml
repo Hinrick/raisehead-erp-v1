@@ -47,8 +47,8 @@ jobs:
             echo "Waiting for services..."
             sleep 15
 
-            # Run database migrations
-            docker compose exec -T app npx prisma migrate deploy
+            # Sync database schema
+            docker compose exec -T app npx prisma db push
 
             # Seed (idempotent, won't fail if already seeded)
             docker compose exec -T app npx prisma db seed || true
